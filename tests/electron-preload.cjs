@@ -1,0 +1,11 @@
+require('./crop-fixture.js');
+const { ipcRenderer } = require('electron');
+window.dualcast.start = config => ipcRenderer.invoke('test-start', config);
+window.dualcast.write = config => ipcRenderer.invoke('test-write', config);
+window.dualcast.stop = config => ipcRenderer.invoke('test-stop', config);
+window.dualcast.onStatus = handler => ipcRenderer.on('test-status', (_, status) => handler(status));
+window.dualcast.toggleFullscreen = () => ipcRenderer.invoke('test-fullscreen');
+window.dualcast.onFullscreenState = handler => ipcRenderer.on('test-fullscreen-state', (_, value) => handler(value));
+window.__captureCount = 0;
+const capture = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+navigator.mediaDevices.getUserMedia = constraints => { window.__captureCount++; return capture(constraints); };

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; media-src 'self' blob:; frame-src https://tv.pfmxvnr.com; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'">
+  <title>独立双播台</title>
+  <link rel="stylesheet" href="./style.css">
+  <script defer src="./renderer.js"></script>
+</head>
+<body data-tab="stream">
+  <nav class="tabs" aria-label="输出页面">
+    <div class="tab-list" role="tablist">
+      <button class="tab active" id="tab-stream" role="tab" aria-controls="stream-mode" aria-selected="true"><i data-lucide="radio"></i><span><strong>热播</strong><small id="stream-tab-status">RTMP · 未设置</small></span></button>
+      <button class="tab" id="tab-meeting" role="tab" aria-controls="meeting-mode" aria-selected="false" tabindex="-1"><i data-lucide="video"></i><span><strong>百佳会</strong><small id="meeting-tab-status">虚拟摄像头 · 待画面</small></span></button>
+      <button class="tab" id="tab-logs" role="tab" aria-controls="logs-mode" aria-selected="false" tabindex="-1"><i data-lucide="file-warning"></i><span><strong>错误日志</strong><small id="log-tab-status">暂无错误</small></span></button>
+    </div>
+    <div class="tab-actions"><span id="global-state" class="global-state">独立模式 · OBS 同类工作流</span><button class="icon" id="open-updates" title="检查应用更新" aria-label="检查应用更新"><i data-lucide="download"></i></button><button class="icon" id="toggle-fullscreen" title="切换全屏" aria-label="切换全屏"><i data-lucide="maximize"></i></button></div>
+  </nav>
+  <main>
+    <section class="quick-audio" id="stream-audio-controls" aria-label="热播收音控制">
+      <div class="quick-audio-heading"><h2>热播收音</h2><span id="stream-mute-summary" role="status">混音未启动</span></div>
+      <div class="quick-audio-switches">
+        <button class="audio-switch" id="stream-microphone-toggle" type="button" role="switch" aria-checked="true" aria-label="热播麦克风收音" title="开启或关闭热播麦克风收音">
+          <i data-lucide="mic"></i><span class="audio-switch-copy"><strong>麦克风</strong><span id="stream-microphone-status">允许收音</span></span><span class="switch-track" aria-hidden="true"></span>
+        </button>
+        <button class="audio-switch" id="stream-program-toggle" type="button" role="switch" aria-checked="true" aria-label="热播系统与应用声音" title="开启或关闭热播系统与应用声音">
+          <i data-lucide="volume-2"></i><span class="audio-switch-copy"><strong>系统与应用声音</strong><span id="stream-program-status">允许收音</span></span><span class="switch-track" aria-hidden="true"></span>
+        </button>
+      </div>
+      <p class="sdk-mute-tip"><i data-lucide="mic-off"></i><span>百佳会静音：请到百佳会悬浮的 SDK 窗口操作。</span></p>
+    </section>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <div class="split-layout" id="broadcast-workspace">
+      <section class="capture-column">
+        <div class="heading"><div><span class="eyebrow" id="role-type">两路共用画面</span><h1 id="page-title">热播与百佳会</h1></div><span id="capture-state" class="status">未选择画面</span></div>
+        <div class="preview" id="preview-container"><video id="preview" muted autoplay playsinline></video><div id="empty-preview" class="empty"><i data-lucide="monitor"></i><span>选择要采集的应用或屏幕</span></div><div class="preview-meta" id="preview-meta" hidden><span id="source-name"></span><span>输出预览</span></div><div id="crop-overlay" hidden><div id="crop-box" tabindex="0" role="group" aria-label="裁剪区域"><span class="crop-grid"></span><button data-handle="nw" aria-label="调整左上角"></button><button data-handle="n" aria-label="调整上边"></button><button data-handle="ne" aria-label="调整右上角"></button><button data-handle="e" aria-label="调整右边"></button><button data-handle="se" aria-label="调整右下角"></button><button data-handle="s" aria-label="调整下边"></button><button data-handle="sw" aria-label="调整左下角"></button><button data-handle="w" aria-label="调整左边"></button></div></div></div>
+        <div class="toolbar"><button class="secondary" id="choose"><i data-lucide="app-window"></i><span>选择共用画面</span></button><button class="secondary" id="release" disabled><i data-lucide="x"></i><span>停止采集</span></button></div>
+        <div class="crop-toolbar"><button class="secondary" id="edit-crop" title="裁剪边缘" aria-pressed="false" disabled><i data-lucide="crop"></i><span>裁剪</span></button><button class="icon-button" id="fit-crop" title="适配画布" aria-label="适配画布" disabled><i data-lucide="scan"></i></button><button class="icon-button" id="reset-crop" title="重置变换" aria-label="重置变换" disabled><i data-lucide="rotate-ccw"></i></button><button class="icon-button" id="lock-crop" title="锁定画面" aria-label="锁定画面" aria-pressed="false" disabled><i data-lucide="unlock"></i></button><span id="crop-size">完整画面</span></div>
+        <div class="capture-note"><span class="signal-dot"></span><span id="capture-note-text">共用画面 · 热播 / 百佳会</span></div>
+        <section class="audio-mixer" aria-label="共享混音器">
+          <div class="mixer-head"><div><span class="eyebrow">两路共用音频</span><h2>共享混音器</h2></div><span id="mixer-state">未启动</span></div>
+          <div class="mixer-output"><label for="program-mode">节目声音来源</label><select id="program-mode"><option value="input">隔离音频输入</option><option value="system">系统声音（Windows）</option><option value="application">应用声音（隔离线路）</option><option value="none">不采集节目声音</option></select></div>
+          <div class="mixer-channel">
+            <label for="program-device"><i data-lucide="volume-2"></i>节目音频</label>
+            <select id="program-device" aria-label="节目音频输入"><option value="">不采集</option></select>
+            <div class="gain-control"><input id="program-gain" type="range" min="0" max="200" value="100" aria-label="节目音量"><output id="program-gain-value" for="program-gain">100%</output></div>
+            <meter id="program-level" min="0" max="1" value="0" aria-label="节目电平"></meter>
+          </div>
+          <div class="mixer-output"><label for="microphone-mode">麦克风用途</label><select id="microphone-mode"><option value="shared">同一麦克风供两边使用</option><option value="separate">两边使用独立麦克风</option></select></div>
+          <div class="mixer-channel">
+            <label for="microphone-device"><i data-lucide="mic"></i>麦克风</label>
+            <select id="microphone-device" aria-label="麦克风输入"><option value="">不采集</option></select>
+            <div class="gain-control"><input id="microphone-gain" type="range" min="0" max="200" value="100" aria-label="麦克风音量"><output id="microphone-gain-value" for="microphone-gain">100%</output></div>
+            <meter id="microphone-level" min="0" max="1" value="0" aria-label="麦克风电平"></meter>
+          </div>
+          <div class="mixer-channel" id="meeting-microphone-row" hidden>
+            <label for="meeting-microphone-device"><i data-lucide="mic"></i>百佳会麦克风</label>
+            <select id="meeting-microphone-device" aria-label="百佳会独立麦克风"><option value="">请选择独立麦克风</option></select>
+            <div class="gain-control"><input id="meetingMicrophone-gain" type="range" min="0" max="200" value="100" aria-label="百佳会麦克风音量"><output id="meetingMicrophone-gain-value" for="meetingMicrophone-gain">100%</output></div>
+            <meter id="meetingMicrophone-level" min="0" max="1" value="0" aria-label="百佳会麦克风电平"></meter>
+          </div>
+          <div class="mixer-output"><label for="stream-output">热播客户端输出</label><select id="stream-output"><option value="">不发送至外部客户端</option></select><span id="stream-audio-state">内置 RTMP 直接使用混音</span></div>
+          <div class="mixer-output"><label for="virtual-output">会议音频输出</label><select id="virtual-output"><option value="">不发送至会议</option></select><span id="meeting-audio-state">未接通会议音频</span></div>
+          <div class="mixer-actions"><button class="icon-button" id="refresh-audio" title="刷新设备" aria-label="刷新设备"><i data-lucide="refresh-cw"></i></button><button class="secondary" id="authorize-audio" title="授权检查会短暂打开并立即关闭音频输入，不会推流"><i data-lucide="mic"></i><span>授权音频输入</span></button><button class="secondary" id="toggle-mixer"><i data-lucide="volume-2"></i><span>启动混音</span></button></div>
+          <button class="secondary" id="audio-settings"><i data-lucide="mic"></i><span>系统音频权限设置</span></button>
+          <p class="mixer-warning" id="audio-routing-note">节目输入与混音输出使用不同虚拟线路，避免重复收音。</p>
+        </section>
+      </section>
+      <section class="output-column">
+        <div id="stream-mode" role="tabpanel" aria-labelledby="tab-stream">
+          <div class="section-header"><div><span class="eyebrow">RTMP 输出</span><h2>热播推流</h2></div><span id="output-state">未推流</span></div>
+          <div class="stream-form">
+            <div class="field"><label for="server">推流服务器</label><input id="server" spellcheck="false" autocomplete="off" placeholder="rtmp://…/live/"></div>
+            <div class="field"><label for="key">推流码</label><div class="secret"><input id="key" type="password" spellcheck="false" autocomplete="off" placeholder="输入完整推流码"><button class="icon" id="show-key" title="显示推流码" aria-label="显示推流码"><i data-lucide="eye"></i></button></div></div>
+            <div class="actions"><button class="icon-button" id="save" title="加密保存推流配置" aria-label="加密保存推流配置"><i data-lucide="save"></i></button><button class="secondary" id="record" disabled><i data-lucide="circle"></i><span>录制测试</span></button><button class="primary" id="broadcast" disabled><i data-lucide="radio"></i><span>开始推流</span></button></div>
+            <div class="metrics"><div><span>运行时长</span><strong id="time">—</strong></div><div><span>编码码率</span><strong id="bitrate">—</strong></div><div><span>编码帧数</span><strong id="frames">—</strong></div></div>
+          </div>
+          <section class="viewer-panel" aria-label="热播视频验证">
+            <div class="viewer-header"><div><span class="eyebrow">观众端 · 静音</span><h2>接收验证</h2></div><button class="icon-button" id="reload-viewer" title="刷新观众画面" aria-label="刷新观众画面"><i data-lucide="refresh-cw"></i></button></div>
+            <div class="viewer-shell" id="viewer-shell"><div id="viewer-empty" class="viewer-empty"><i data-lucide="radio-tower"></i><span>正在加载视频画面</span></div></div>
+            <div class="viewer-footer"><span id="viewer-state">本机观众端静音防回采；请用另一台设备核对接收声音。</span><button class="link-button" id="open-viewer">浏览器打开</button></div>
+          </section>
+        </div>
+        <div id="meeting-mode" role="tabpanel" aria-labelledby="tab-meeting" hidden>
+          <div class="section-header"><div><span class="eyebrow">独立输出</span><h2>百佳会摄像头</h2></div><span id="meeting-state">未启动</span></div>
+          <div class="meeting-card"><div class="meeting-mark"><i data-lucide="video"></i></div><div><strong id="camera-device-name">热播同窗口</strong><p>1920 × 1080 · 目标 60 fps</p></div></div>
+          <div class="camera-controls">
+            <p id="camera-driver-state" role="status">正在检查虚拟摄像头组件…</p>
+            <div class="toolbar">
+              <button class="primary" id="camera-toggle" disabled><i data-lucide="video"></i><span>启动虚拟摄像头</span></button>
+              <button class="secondary" id="camera-install" disabled><i data-lucide="download"></i><span id="camera-install-label">安装独立摄像头</span></button>
+              <button class="secondary" id="camera-verify" disabled><i data-lucide="eye"></i><span>验证摄像头</span></button>
+              <button class="icon-button" id="camera-refresh" title="检查摄像头注册、激活与视频规格" aria-label="检查摄像头注册、激活与视频规格"><i data-lucide="refresh-cw"></i></button>
+            </div>
+            <p id="camera-state" role="status">未启动 · 会议端待选择摄像头</p>
+            <p id="camera-source-quality" class="meeting-tip"></p>
+            <p id="camera-verification-state" role="status"></p>
+            <img id="camera-verification-image" class="camera-verification-image" alt="本机 热播同窗口 回读画面" hidden>
+            <p class="meeting-tip" id="camera-device-tip">百佳会摄像头选择 热播同窗口，麦克风选择混音线路的录音端。安装或改名后需重新打开会议客户端。</p>
+          </div>
+          <div class="rows"><div><span>视频设备</span><strong id="meeting-video-device">热播同窗口</strong></div><div><span>会议音频</span><strong id="meeting-audio-summary">未接通 · 需配置混音线路</strong></div><div><span>支持平台</span><strong>Windows x64</strong></div></div>
+        </div>
+      </section>
+    </div>
+    <section id="logs-mode" role="tabpanel" aria-labelledby="tab-logs" hidden aria-label="错误日志">
+      <div class="section-header"><div><span class="eyebrow">本机诊断</span><h1>错误日志</h1><p id="log-environment" class="section-subtitle"></p></div></div>
+      <div class="log-actions">
+        <button class="secondary" id="log-copy" title="复制全部保留日志和系统状态"><i data-lucide="copy"></i><span>复制报告</span></button>
+        <button class="primary" id="log-export-text" title="导出全部保留日志和系统状态为 TXT"><i data-lucide="download"></i><span>导出错误日志.txt</span></button>
+        <button class="secondary" id="log-export" title="导出全部保留日志和系统状态为 JSON"><i data-lucide="download"></i><span>导出 JSON</span></button>
+        <button class="icon" id="log-refresh" title="刷新日志" aria-label="刷新日志"><i data-lucide="refresh-cw"></i></button>
+        <button class="icon" id="log-clear" title="清空本机日志" aria-label="清空本机日志"><i data-lucide="trash-2"></i></button>
+      </div>
+      <div class="log-filters">
+        <label>级别<select id="log-level"><option value="">全部级别</option><option value="error">错误</option><option value="warn">警告</option><option value="info">信息</option></select></label>
+        <label>功能<select id="log-module"><option value="">全部功能</option></select></label>
+        <label class="log-query">搜索<input id="log-search" type="search" placeholder="搜索错误、操作或会话" autocomplete="off"></label>
+      </div>
+      <p id="log-storage" class="section-subtitle"></p><p id="log-feedback" role="status" class="section-subtitle"></p>
+      <div class="log-table-wrap"><table class="log-table"><thead><tr><th>时间</th><th>级别</th><th>功能</th><th>事件</th></tr></thead><tbody id="log-entries"></tbody></table><p id="log-empty">没有符合条件的日志。</p></div>
+      <div class="log-pagination"><span id="log-page"></span><button class="icon" id="log-prev" title="上一页" aria-label="上一页"><i data-lucide="chevron-left"></i></button><button class="icon" id="log-next" title="下一页" aria-label="下一页"><i data-lucide="chevron-right"></i></button></div>
+    </section>
+    <footer>独立采集与编码 · 热播推流 / 会议共享</footer>
+  </main>
+  <dialog id="source-dialog" aria-labelledby="source-dialog-title"><div class="dialog-head"><h2 id="source-dialog-title">选择采集来源</h2><button class="icon" id="close-sources" title="关闭" aria-label="关闭"><i data-lucide="x"></i></button></div><input id="source-search" type="search" placeholder="搜索窗口或屏幕" aria-label="搜索采集来源" autocomplete="off"><p class="dialog-note" id="screen-permission" hidden></p><div id="sources" class="sources"></div><p id="sources-empty" hidden>没有匹配的窗口或屏幕。</p></dialog>
+  <dialog id="confirmation"><div class="dialog-head"><h2 id="confirm-title"></h2></div><p id="confirm-copy"></p><div class="confirm-buttons"><button class="secondary" id="cancel-confirm">取消</button><button class="primary" id="accept-confirm">确认</button></div></dialog>
+  <dialog id="updates-dialog" aria-labelledby="updates-title">
+    <div class="dialog-head"><div><h2 id="updates-title">应用更新</h2><p id="update-current" class="section-subtitle"></p></div><button class="icon" id="close-updates" title="关闭" aria-label="关闭更新"><i data-lucide="x"></i></button></div>
+    <p id="update-message" role="status"></p><strong id="update-target"></strong>
+    <pre id="update-notes" hidden></pre><progress id="update-progress" max="100" value="0" aria-label="更新下载进度" hidden></progress><span id="update-percent"></span>
+    <div class="update-actions"><button class="secondary" id="update-check"><i data-lucide="refresh-cw"></i><span>检查更新</span></button><button class="primary" id="update-download" hidden><i data-lucide="download"></i><span>下载更新</span></button><button class="primary" id="update-install" hidden><i data-lucide="refresh-cw"></i><span>重启并安装</span></button></div>
+    <details class="update-settings"><summary>更新来源</summary><label for="update-repository">GitHub 仓库</label><input id="update-repository" placeholder="用户名/仓库名" spellcheck="false" autocomplete="off"><label class="update-auto"><input id="update-auto" type="checkbox" checked>启动后自动检查更新</label><button class="secondary" id="update-save"><i data-lucide="save"></i><span>保存设置</span></button></details>
+    <p id="update-feedback" role="status"></p>
+  </dialog>
+</body>
+</html>

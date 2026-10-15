@@ -1,0 +1,51 @@
+const { contextBridge, ipcRenderer } = require('electron');
+window.addEventListener('error', event => {
+  ipcRenderer.send('diagnostic', { level: 'error', module: 'app', action: 'window-error', message: event.message || '页面资源加载失败',
+    details: { stack: event.error?.stack, line: event.lineno, column: event.colno, element: event.target?.tagName } });
+}, true);
+window.addEventListener('unhandledrejection', event => {
+  ipcRenderer.send('diagnostic', { level: 'error', module: 'app', action: 'unhandled-rejection',
+    message: String(event.reason?.message || event.reason), details: { stack: event.reason?.stack } });
+});
+contextBridge.exposeInMainWorld('dualcast', {
+  platform: process.platform,
+  updateStatus: () => ipcRenderer.invoke('update-status'),
+  updateConfigure: config => ipcRenderer.invoke('update-configure', config),
+  updateCheck: () => ipcRenderer.invoke('update-check'),
+  updateDownload: () => ipcRenderer.invoke('update-download'),
+  updateInstall: () => ipcRenderer.invoke('update-install'),
+  onUpdateState: handler => ipcRenderer.on('update-state', (_, status) => handler(status)),
+  diagnostic: entry => ipcRenderer.send('diagnostic', entry),
+  logsSnapshot: () => ipcRenderer.invoke('logs-snapshot'),
+  logsCopy: () => ipcRenderer.invoke('logs-copy'),
+  logsExport: () => ipcRenderer.invoke('logs-export'),
+  logsExportText: () => ipcRenderer.invoke('logs-export', 'txt'),
+  logsClear: () => ipcRenderer.invoke('logs-clear'),
+  onLogsChanged: handler => ipcRenderer.on('logs-changed', handler),
+  sources: () => ipcRenderer.invoke('sources'),
+  select: config => ipcRenderer.invoke('select', config),
+  checkSource: id => ipcRenderer.invoke('source-check', { id }),
+  cameraStatus: config => ipcRenderer.invoke('camera-status', { check: config?.check === true }),
+  cameraInstall: () => ipcRenderer.invoke('camera-install'),
+  cameraStart: config => ipcRenderer.invoke('camera-start', config),
+  cameraWrite: config => ipcRenderer.invoke('camera-write', config),
+  cameraStop: config => ipcRenderer.invoke('camera-stop', config),
+  cameraVerify: () => ipcRenderer.invoke('camera-verify'),
+  onCameraState: handler => ipcRenderer.on('camera-state', (_, status) => handler(status)),
+  microphone: () => ipcRenderer.invoke('microphone'),
+  audioSettings: () => ipcRenderer.invoke('audio-settings'),
+  start: config => ipcRenderer.invoke('encoder-start', config),
+  write: data => ipcRenderer.invoke('encoder-write', data),
+  stop: config => ipcRenderer.invoke('encoder-stop', config),
+  status: () => ipcRenderer.invoke('encoder-status'),
+  saveDestination: config => ipcRenderer.invoke('destination-save', config),
+  loadDestination: () => ipcRenderer.invoke('destination-load'),
+  viewerURL: () => ipcRenderer.invoke('viewer-url'),
+  openViewer: () => ipcRenderer.invoke('viewer-open'),
+  reloadViewer: () => ipcRenderer.invoke('viewer-reload'),
+  viewerLayout: layout => ipcRenderer.send('viewer-layout', layout),
+  onViewerStatus: handler => { ipcRenderer.on('viewer-status', (_, status) => handler(status)); },
+  toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
+  onFullscreenState: handler => { ipcRenderer.on('fullscreen-state', (_, full) => handler(full)); },
+  onStatus: handler => { ipcRenderer.on('encoder-status', (_, status) => handler(status)); },
+});

@@ -1,0 +1,5 @@
+const CAMERA_NAME = '热播同窗口';
+const CAMERA_CLSID = '{2B8161C2-EFE5-48F3-94A9-ECAEE3C5D46F}';
+const CAMERA_MAPPING = 'DualcastReboVideo';
+
+module.exports = { CAMERA_NAME, CAMERA_CLSID, CAMERA_MAPPING };

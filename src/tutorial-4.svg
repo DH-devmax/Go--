@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#31506f" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="#edf4fb"/>
+  <rect x="42" y="38" width="1196" height="644" rx="20" fill="#fff" filter="url(#shadow)"/>
+  <rect x="42" y="38" width="1196" height="62" rx="20" fill="#f7fafe"/>
+  <path d="M42 78h1196" stroke="#d8e5f2"/>
+  <circle cx="76" cy="69" r="8" fill="#ff6258"/>
+  <circle cx="101" cy="69" r="8" fill="#ffbd2e"/>
+  <circle cx="126" cy="69" r="8" fill="#28c840"/>
+  <rect x="180" y="57" width="540" height="25" rx="12" fill="#e8f0f8"/>
+  <text x="208" y="75" fill="#71849a" font-family="Segoe UI,Arial,sans-serif" font-size="14">双播台 · 百佳会议</text>
+  <text x="88" y="145" fill="#1e3a59" font-family="Segoe UI,Arial,sans-serif" font-size="25" font-weight="700">选择独立共享窗口</text>
+  <text x="88" y="177" fill="#7890a8" font-family="Segoe UI,Arial,sans-serif" font-size="16">找到“双播台 · 共用画面”，确认预览后开始共享。</text>
+  <rect x="88" y="218" width="1104" height="342" rx="16" fill="#f6f9fc" stroke="#d6e3f0"/>
+  <rect x="122" y="252" width="330" height="180" rx="12" fill="#202a36"/>
+  <rect x="122" y="252" width="330" height="30" rx="12" fill="#344252"/>
+  <circle cx="143" cy="267" r="5" fill="#ff6258"/>
+  <circle cx="160" cy="267" r="5" fill="#ffbd2e"/>
+  <circle cx="177" cy="267" r="5" fill="#28c840"/>
+  <rect x="142" y="306" width="290" height="100" rx="8" fill="#0c1017"/>
+  <rect x="198" y="349" width="175" height="12" rx="6" fill="#3e536a"/>
+  <text x="142" y="461" fill="#36516c" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="600">同一来源 · 热播画面</text>
+  <rect x="475" y="252" width="330" height="180" rx="12" fill="#152638" stroke="#277fca" stroke-width="4"/>
+  <rect x="475" y="252" width="330" height="30" rx="12" fill="#d5eaff"/>
+  <circle cx="496" cy="267" r="5" fill="#ff6258"/>
+  <circle cx="513" cy="267" r="5" fill="#ffbd2e"/>
+  <circle cx="530" cy="267" r="5" fill="#28c840"/>
+  <rect x="495" y="306" width="290" height="100" rx="8" fill="#0b111b"/>
+  <rect x="550" y="349" width="180" height="12" rx="6" fill="#4b82b4"/>
+  <text x="495" y="461" fill="#1d659c" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700">双播台 · 共用画面</text>
+  <path d="M862 328h204" stroke="#277fca" stroke-width="6" stroke-linecap="round"/>
+  <path d="M862 378h156" stroke="#c5d8e9" stroke-width="6" stroke-linecap="round"/>
+  <path d="M862 428h184" stroke="#c5d8e9" stroke-width="6" stroke-linecap="round"/>
+  <rect x="88" y="590" width="1104" height="48" rx="14" fill="#277fca"/>
+  <text x="640" y="621" fill="#fff" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="16" font-weight="700">开始共享</text>
+  <circle cx="1102" cy="614" r="32" fill="#fff" stroke="#277fca" stroke-width="4"/>
+  <text x="1102" y="625" fill="#277fca" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="28" font-weight="700">4</text>
+</svg>

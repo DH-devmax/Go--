@@ -1,0 +1,40 @@
+name: Windows Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      DUALCAST_UPDATE_REPOSITORY: ${{ github.repository }}
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Validate release tag
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw "Tag must match package.json version" }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Use a stable release version" }
+      - run: npm ci
+      - run: npm test
+      - run: npm run package:win:installer
+      - name: Create reviewable release draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $notes = "RELEASE-$version.md"
+          if (!(Test-Path $notes)) { throw "Release notes are required: $notes" }
+          $installer = "release/updates/Dualcast-Independent-Setup-$version-x64.exe"
+          $assets = @($installer, "$installer.blockmap", "release/updates/latest.yml", "release/updates/SHA256SUMS.txt")
+          foreach ($asset in $assets) { if (!(Test-Path $asset)) { throw "Missing release asset: $asset" } }
+          gh release create $env:GITHUB_REF_NAME --draft --verify-tag --title "双播台 $version" --notes-file $notes @assets
+          if ($LASTEXITCODE -ne 0) { throw "Failed to create release draft" }

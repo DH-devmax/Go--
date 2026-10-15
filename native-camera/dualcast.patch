@@ -1,0 +1,814 @@
+--- a/plugins/win-dshow/virtualcam-module/virtualcam-module.cpp
++++ b/plugins/win-dshow/virtualcam-module/virtualcam-module.cpp
+@@ -1,5 +1,7 @@
+ #include "virtualcam-filter.hpp"
+ #include "virtualcam-guid.h"
++#include "camera-trace.hpp"
++#include <new>
+ 
+ /* ========================================================================= */
+ 
+@@ -61,7 +63,7 @@
+ 	return (ULONG)new_refs;
+ }
+ 
+-STDMETHODIMP VCamFactory::CreateInstance(LPUNKNOWN parent, REFIID, void **p_ptr)
++STDMETHODIMP VCamFactory::CreateInstance(LPUNKNOWN parent, REFIID riid, void **p_ptr)
+ {
+ 	if (!p_ptr) {
+ 		return E_POINTER;
+@@ -71,12 +73,21 @@
+ 
+ 	/* don't bother supporting the "parent" functionality */
+ 	if (parent) {
+-		return E_NOINTERFACE;
++		return CLASS_E_NOAGGREGATION;
+ 	}
+ 
+ 	if (IsEqualCLSID(cls, CLSID_OBS_VirtualVideo)) {
+-		*p_ptr = (void *)new VCamFilter();
+-		return S_OK;
++		try {
++			auto *filter = new VCamFilter();
++			HRESULT hr = filter->QueryInterface(riid, p_ptr);
++			filter->Release();
++			Dualcast::trace("create-interface", hr, 0, 0, 0, 0, riid.Data1);
++			return hr;
++		} catch (const std::bad_alloc &) {
++			return E_OUTOFMEMORY;
++		} catch (...) {
++			return E_UNEXPECTED;
++		}
+ 	}
+ 
+ 	return E_NOINTERFACE;
+@@ -100,34 +111,38 @@
+ 	return (DWORD)(wcslen(str) + 1) * sizeof(wchar_t);
+ }
+ 
+-static bool RegServer(const CLSID &cls, const wchar_t *desc, const wchar_t *file, const wchar_t *model = L"Both",
++static HRESULT RegServer(const CLSID &cls, const wchar_t *desc, const wchar_t *file, const wchar_t *model = L"Both",
+ 		      const wchar_t *type = L"InprocServer32")
+ {
+ 	wchar_t cls_str[CHARS_IN_GUID];
+ 	wchar_t temp[MAX_PATH];
+ 	HKEY key = nullptr;
+ 	HKEY subkey = nullptr;
+-	bool success = false;
++	LSTATUS result;
+ 
+ 	StringFromGUID2(cls, cls_str, CHARS_IN_GUID);
+ 
+ 	StringCbPrintf(temp, sizeof(temp), L"CLSID\\%s", cls_str);
+ 
+-	if (RegCreateKey(HKEY_CLASSES_ROOT, temp, &key) != ERROR_SUCCESS) {
++	result = RegCreateKey(HKEY_CLASSES_ROOT, temp, &key);
++	if (result != ERROR_SUCCESS) {
+ 		goto fail;
+ 	}
+ 
+-	RegSetValueW(key, nullptr, REG_SZ, desc, string_size(desc));
++	result = RegSetValueW(key, nullptr, REG_SZ, desc, string_size(desc));
++	if (result != ERROR_SUCCESS)
++		goto fail;
+ 
+-	if (RegCreateKey(key, type, &subkey) != ERROR_SUCCESS) {
++	result = RegCreateKey(key, type, &subkey);
++	if (result != ERROR_SUCCESS) {
+ 		goto fail;
+ 	}
+ 
+-	RegSetValueW(subkey, nullptr, REG_SZ, file, string_size(file));
+-	RegSetValueExW(subkey, L"ThreadingModel", 0, REG_SZ, (const BYTE *)model, string_size(model));
++	result = RegSetValueW(subkey, nullptr, REG_SZ, file, string_size(file));
++	if (result != ERROR_SUCCESS)
++		goto fail;
++	result = RegSetValueExW(subkey, L"ThreadingModel", 0, REG_SZ, (const BYTE *)model, string_size(model));
+ 
+-	success = true;
+-
+ fail:
+ 	if (key) {
+ 		RegCloseKey(key);
+@@ -136,7 +151,7 @@
+ 		RegCloseKey(subkey);
+ 	}
+ 
+-	return success;
++	return HRESULT_FROM_WIN32(result);
+ }
+ 
+ static bool UnregServer(const CLSID &cls)
+@@ -150,29 +165,29 @@
+ 	return RegDeleteTreeW(HKEY_CLASSES_ROOT, temp) == ERROR_SUCCESS;
+ }
+ 
+-static bool RegServers(bool reg)
++static HRESULT RegServers(bool reg)
+ {
+ 	wchar_t file[MAX_PATH];
+ 
+ 	if (!GetModuleFileNameW(dll_inst, file, MAX_PATH)) {
+-		return false;
++		return HRESULT_FROM_WIN32(GetLastError());
+ 	}
+ 
+ 	if (reg) {
+-		return RegServer(CLSID_OBS_VirtualVideo, L"OBS Virtual Camera", file);
++		return RegServer(CLSID_OBS_VirtualVideo, L"\u70ed\u64ad\u540c\u7a97\u53e3", file);
+ 	} else {
+-		return UnregServer(CLSID_OBS_VirtualVideo);
++		return UnregServer(CLSID_OBS_VirtualVideo) ? S_OK : E_FAIL;
+ 	}
+ }
+ 
+-static bool RegFilters(bool reg)
++static HRESULT RegFilters(bool reg)
+ {
+ 	ComPtr<IFilterMapper2> fm;
+ 	HRESULT hr;
+ 
+ 	hr = CoCreateInstance(CLSID_FilterMapper2, nullptr, CLSCTX_INPROC_SERVER, IID_IFilterMapper2, (void **)&fm);
+ 	if (FAILED(hr)) {
+-		return false;
++		return hr;
+ 	}
+ 
+ 	if (reg) {
+@@ -183,49 +198,50 @@
+ 		rf2.cPins = 1;
+ 		rf2.rgPins = &AMSPinVideo;
+ 
+-		hr = fm->RegisterFilter(CLSID_OBS_VirtualVideo, L"OBS Virtual Camera", &moniker,
++		hr = fm->RegisterFilter(CLSID_OBS_VirtualVideo, L"\u70ed\u64ad\u540c\u7a97\u53e3", &moniker,
+ 					&CLSID_VideoInputDeviceCategory, nullptr, &rf2);
+ 		if (FAILED(hr)) {
+-			return false;
++			return hr;
+ 		}
+ 	} else {
+ 		hr = fm->UnregisterFilter(&CLSID_VideoInputDeviceCategory, 0, CLSID_OBS_VirtualVideo);
+ 		if (FAILED(hr)) {
+-			return false;
++			return hr;
+ 		}
+ 	}
+ 
+-	return true;
++	return S_OK;
+ }
+ 
+ /* ========================================================================= */
+ 
+ STDAPI DllRegisterServer()
+ {
+-	if (!RegServers(true)) {
+-		RegServers(false);
+-		return E_FAIL;
++	HRESULT init = CoInitialize(nullptr);
++	if (FAILED(init) && init != RPC_E_CHANGED_MODE) {
++		Dualcast::trace("register-com-init", init);
++		return init;
+ 	}
+-
+-	CoInitialize(0);
+-
+-	if (!RegFilters(true)) {
+-		RegFilters(false);
+-		RegServers(false);
+-		CoUninitialize();
+-		return E_FAIL;
++	HRESULT hr = RegServers(true);
++	Dualcast::trace("register-server", hr);
++	if (SUCCEEDED(hr)) {
++		hr = RegFilters(true);
++		Dualcast::trace("register-device-category", hr);
+ 	}
+-
+-	CoUninitialize();
+-	return S_OK;
++	if (SUCCEEDED(init))
++		CoUninitialize();
++	return hr;
+ }
+ 
+ STDAPI DllUnregisterServer()
+ {
+-	CoInitialize(0);
++	HRESULT init = CoInitialize(nullptr);
++	if (FAILED(init) && init != RPC_E_CHANGED_MODE)
++		return init;
+ 	RegFilters(false);
+ 	RegServers(false);
+-	CoUninitialize();
++	if (SUCCEEDED(init))
++		CoUninitialize();
+ 	return S_OK;
+ }
+ 
+--- a/plugins/win-dshow/virtualcam-module/virtualcam-filter.cpp
++++ b/plugins/win-dshow/virtualcam-module/virtualcam-filter.cpp
+@@ -1,7 +1,8 @@
+ #include "virtualcam-filter.hpp"
+ #include "sleepto.h"
+ 
+-#include <shlobj_core.h>
++#include "media-policy.hpp"
++#include "camera-trace.hpp"
+ #include <strsafe.h>
+ #include <inttypes.h>
+ 
+@@ -11,6 +12,7 @@
+ extern const uint8_t *get_placeholder_ptr();
+ extern const bool get_placeholder_size(int *out_cx, int *out_cy);
+ extern volatile long locks;
++extern const CLSID CLSID_OBS_VirtualVideo;
+ 
+ /* ========================================================================= */
+ 
+@@ -42,9 +44,9 @@
+ 	/* ---------------------------------------- */
+ 	/* add last/current obs res/interval        */
+ 
+-	uint32_t new_obs_cx = obs_cx;
+-	uint32_t new_obs_cy = obs_cy;
+-	uint64_t new_obs_interval = obs_interval;
++	uint32_t new_obs_cx = 1920;
++	uint32_t new_obs_cy = 1080;
++	uint64_t new_obs_interval = 166667;
+ 
+ 	vq = video_queue_open();
+ 	if (vq) {
+@@ -55,29 +57,6 @@
+ 		/* don't keep it open until the filter actually starts */
+ 		video_queue_close(vq);
+ 		vq = nullptr;
+-	} else {
+-		wchar_t res_file[MAX_PATH];
+-		SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, res_file);
+-		StringCbCat(res_file, sizeof(res_file), L"\\obs-virtualcam.txt");
+-
+-		HANDLE file = CreateFileW(res_file, GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+-		if (file) {
+-			char res[128];
+-			DWORD len = 0;
+-
+-			if (ReadFile(file, res, sizeof(res) - 1, &len, nullptr)) {
+-				res[len] = 0;
+-				int vals = sscanf(res, "%" PRIu32 "x%" PRIu32 "x%" PRIu64, &new_obs_cx, &new_obs_cy,
+-						  &new_obs_interval);
+-				if (vals != 3) {
+-					new_obs_cx = obs_cx;
+-					new_obs_cy = obs_cy;
+-					new_obs_interval = obs_interval;
+-				}
+-			}
+-
+-			CloseHandle(file);
+-		}
+ 	}
+ 
+ 	if (new_obs_cx != obs_cx || new_obs_cy != obs_cy || new_obs_interval != obs_interval) {
+@@ -89,6 +68,16 @@
+ 		obs_cx = new_obs_cx;
+ 		obs_cy = new_obs_cy;
+ 		obs_interval = new_obs_interval;
++	}
++
++	/* Keep HD/60 first; clients may negotiate their own capture format. */
++	for (const auto &mode : Dualcast::video_modes) {
++		for (const auto interval : {166667LL, 333333LL, 666667LL}) {
++			if (mode.width == obs_cx && mode.height == obs_cy && interval == obs_interval)
++				continue;
++			for (const auto fmt : {VideoFormat::NV12, VideoFormat::I420, VideoFormat::YUY2})
++				AddVideoFormat(fmt, mode.width, mode.height, interval);
++		}
+ 	}
+ 
+ 	/* ---------------------------------------- */
+@@ -97,6 +86,7 @@
+ 
+ 	AddRef();
+ 	os_atomic_inc_long(&locks);
++	Dualcast::trace("filter-created", S_OK, GetCX(), GetCY(), GetInterval());
+ }
+ 
+ VCamFilter::~VCamFilter()
+@@ -114,14 +104,23 @@
+ 
+ const wchar_t *VCamFilter::FilterName() const
+ {
+-	return L"VCamFilter";
++	return L"\u70ed\u64ad\u540c\u7a97\u53e3";
+ }
+ 
++STDMETHODIMP VCamFilter::GetClassID(CLSID *pClsID)
++{
++	if (!pClsID)
++		return E_POINTER;
++	*pClsID = CLSID_OBS_VirtualVideo;
++	return S_OK;
++}
++
+ STDMETHODIMP VCamFilter::Pause()
+ {
+ 	HRESULT hr;
+ 
+ 	hr = OutputFilter::Pause();
++	Dualcast::trace("pause", hr, GetCX(), GetCY(), GetInterval());
+ 	if (FAILED(hr)) {
+ 		return hr;
+ 	}
+@@ -133,13 +132,23 @@
+ 
+ STDMETHODIMP VCamFilter::Run(REFERENCE_TIME tStart)
+ {
++	FILTER_STATE state;
++	GetState(0, &state);
++	if (state == State_Stopped) {
++		HRESULT hr = Pause();
++		if (FAILED(hr))
++			return hr;
++	}
+ 	os_atomic_set_bool(&active, true);
++	SetEvent(thread_start);
++	Dualcast::trace("run", S_OK, GetCX(), GetCY(), GetInterval());
+ 	return OutputFilter::Run(tStart);
+ }
+ 
+ STDMETHODIMP VCamFilter::Stop()
+ {
+ 	os_atomic_set_bool(&active, false);
++	Dualcast::trace("stop", S_OK);
+ 	return OutputFilter::Stop();
+ }
+ 
+@@ -193,8 +202,9 @@
+ 	while (!stopped()) {
+ 		if (os_atomic_load_bool(&active))
+ 			Frame(filter_time);
+-		sleepto_100ns(cur_time += obs_interval);
+-		filter_time += obs_interval;
++		const uint64_t delivery_interval = (uint64_t)GetInterval();
++		sleepto_100ns(cur_time += delivery_interval);
++		filter_time += delivery_interval;
+ 	}
+ }
+ 
+@@ -297,7 +307,7 @@
+ 		else
+ 			ShowDefaultFrame(ptr);
+ 
+-		UnlockSampleData(ts, ts + obs_interval);
++		UnlockSampleData(ts, ts + GetInterval());
+ 	}
+ }
+ 
+--- a/plugins/win-dshow/virtualcam-module/virtualcam-filter.hpp
++++ b/plugins/win-dshow/virtualcam-module/virtualcam-filter.hpp
+@@ -66,6 +66,7 @@
+ 	VCamFilter();
+ 	~VCamFilter() override;
+ 
++	STDMETHODIMP GetClassID(CLSID *pClsID) override;
+ 	STDMETHODIMP Pause() override;
+ 	STDMETHODIMP Run(REFERENCE_TIME tStart) override;
+ 	STDMETHODIMP Stop() override;
+--- a/shared/obs-shared-memory-queue/shared-memory-queue.c
++++ b/shared/obs-shared-memory-queue/shared-memory-queue.c
+@@ -1,8 +1,9 @@
+ #include <windows.h>
++#include <stddef.h>
+ #include "shared-memory-queue.h"
+ #include "tiny-nv12-scale.h"
+ 
+-#define VIDEO_NAME L"OBSVirtualCamVideo"
++#define VIDEO_NAME L"DualcastReboVideo"
+ 
+ enum queue_type {
+ 	SHARED_QUEUE_TYPE_VIDEO,
+@@ -19,11 +20,15 @@
+ 
+ 	uint32_t cx;
+ 	uint32_t cy;
++	uint32_t alignment_padding;
+ 	uint64_t interval;
+ 
+ 	uint32_t reserved[8];
+ };
+ 
++_Static_assert(offsetof(struct queue_header, interval) == 40, "Dualcast queue interval ABI");
++_Static_assert(sizeof(struct queue_header) == 80, "Dualcast queue header ABI");
++
+ struct video_queue {
+ 	HANDLE handle;
+ 	bool ready_to_read;
+--- a/deps/libdshowcapture/src/source/output-filter.cpp
++++ b/deps/libdshowcapture/src/source/output-filter.cpp
+@@ -20,6 +20,8 @@
+ #include "output-filter.hpp"
+ #include "dshow-formats.hpp"
+ #include "log.hpp"
++#include "media-policy.hpp"
++#include "camera-trace.hpp"
+ 
+ #include <strsafe.h>
+ 
+@@ -97,42 +99,63 @@
+ // IPin methods
+ STDMETHODIMP OutputPin::Connect(IPin *pReceivePin, const AM_MEDIA_TYPE *pmt)
+ {
+-	HRESULT hr;
+-
+ 	PrintFunc(L"OutputPin::Connect");
+ 
+-	if (filter->state == State_Running)
++	if (!pReceivePin)
++		return E_POINTER;
++	if (filter->state != State_Stopped)
+ 		return VFW_E_NOT_STOPPED;
+-
+ 	if (connectedPin)
+ 		return VFW_E_ALREADY_CONNECTED;
+ 
+-	hr = pReceivePin->ReceiveConnection(this, mt);
+-	if (FAILED(hr)) {
+-#if 0 /* debug code to test caps on fail */
+-		ComPtr<IEnumMediaTypes> enumMT;
+-		pReceivePin->EnumMediaTypes(&enumMT);
+-
+-		if (enumMT) {
+-			MediaTypePtr mt;
+-			ULONG count = 0;
+-
+-			while (enumMT->Next(1, &mt, &count) == S_OK) {
+-				int test = 0;
+-				test = 1;
+-			}
++	MediaType previous = mt;
++	auto connect = [&](const AM_MEDIA_TYPE *candidate) {
++		HRESULT hr = SetFormat(const_cast<AM_MEDIA_TYPE *>(candidate));
++		if (FAILED(hr))
++			return hr;
++		hr = pReceivePin->ReceiveConnection(this, mt);
++		if (FAILED(hr)) {
++			Dualcast::trace("receive-connection-failed", hr, curCX, curCY, curInterval);
++			return hr;
+ 		}
+-#endif
+-		return E_FAIL;
++		if (!AllocateBuffers(pReceivePin, true)) {
++			pReceivePin->Disconnect();
++			allocator.Clear();
++			return (HRESULT)VFW_E_NO_TRANSPORT;
++		}
++		connectedPin = pReceivePin;
++		Dualcast::trace("connected", S_OK, curCX, curCY, curInterval);
++		return (HRESULT)S_OK;
++	};
++	if (pmt && pmt->cbFormat) {
++		HRESULT hr = connect(pmt);
++		if (FAILED(hr))
++			SetFormat(previous);
++		return hr;
+ 	}
+ 
+-	if (!AllocateBuffers(pReceivePin, true)) {
+-		return E_FAIL;
++	auto matches = [&](const AM_MEDIA_TYPE *candidate) {
++		return !pmt ||
++		       ((pmt->majortype == GUID_NULL || pmt->majortype == candidate->majortype) &&
++			(pmt->subtype == GUID_NULL || pmt->subtype == candidate->subtype) &&
++			(pmt->formattype == GUID_NULL || pmt->formattype == FORMAT_None ||
++			 pmt->formattype == candidate->formattype));
++	};
++	HRESULT hr = VFW_E_NO_ACCEPTABLE_TYPES;
++	if (matches(previous)) {
++		hr = connect(previous);
++		if (SUCCEEDED(hr))
++			return hr;
+ 	}
+-
+-	connectedPin = pReceivePin;
+-	DSHOW_UNUSED(pmt);
+-	return S_OK;
++	for (const auto &candidate : mtList) {
++		if (matches(candidate)) {
++			hr = connect(candidate);
++			if (SUCCEEDED(hr))
++				return hr;
++		}
++	}
++	SetFormat(previous);
++	return hr;
+ }
+ 
+ STDMETHODIMP OutputPin::ReceiveConnection(IPin *pConnector,
+@@ -222,11 +245,11 @@
+ 	return S_OK;
+ }
+ 
+-STDMETHODIMP OutputPin::QueryAccept(const AM_MEDIA_TYPE *)
++STDMETHODIMP OutputPin::QueryAccept(const AM_MEDIA_TYPE *pmt)
+ {
+ 	PrintFunc(L"OutputPin::QueryAccept");
+ 
+-	return S_OK;
++	return IsValidMediaType(pmt) ? S_OK : S_FALSE;
+ }
+ 
+ STDMETHODIMP OutputPin::EnumMediaTypes(IEnumMediaTypes **ppEnum)
+@@ -322,45 +345,96 @@
+ 	}
+ 
+ 	AM_MEDIA_TYPE *pmt = mtList[iIndex].Duplicate();
+-	VIDEOINFOHEADER *vih = reinterpret_cast<decltype(vih)>(pmt->pbFormat);
++	const BITMAPINFOHEADER *bih = GetBitmapInfoHeader(*pmt);
+ 
+ 	VIDEO_STREAM_CONFIG_CAPS caps = {};
+-	caps.guid = FORMAT_VideoInfo;
+-	caps.MinFrameInterval = vih->AvgTimePerFrame;
+-	caps.MaxFrameInterval = vih->AvgTimePerFrame;
+-	caps.MinOutputSize.cx = vih->bmiHeader.biWidth;
+-	caps.MinOutputSize.cy = vih->bmiHeader.biHeight;
++	caps.guid = pmt->formattype;
++	caps.MinFrameInterval = Dualcast::min_interval;
++	caps.MaxFrameInterval = Dualcast::max_interval;
++	caps.MinOutputSize.cx = bih->biWidth;
++	caps.MinOutputSize.cy = bih->biHeight;
+ 	caps.MaxOutputSize = caps.MinOutputSize;
+ 	caps.InputSize = caps.MinOutputSize;
+ 	caps.MinCroppingSize = caps.MinOutputSize;
+ 	caps.MaxCroppingSize = caps.MinOutputSize;
+-	caps.CropGranularityX = vih->bmiHeader.biWidth;
+-	caps.CropGranularityY = vih->bmiHeader.biHeight;
+-	caps.MinBitsPerSecond = vih->dwBitRate;
+-	caps.MaxBitsPerSecond = caps.MinBitsPerSecond;
++	caps.CropGranularityX = bih->biWidth;
++	caps.CropGranularityY = bih->biHeight;
++	caps.MinBitsPerSecond = (LONG)((uint64_t)bih->biSizeImage * 80000000 / caps.MaxFrameInterval);
++	caps.MaxBitsPerSecond = (LONG)((uint64_t)bih->biSizeImage * 80000000 / caps.MinFrameInterval);
+ 
+ 	*ppmt = pmt;
+ 
+ 	memcpy(pSCC, &caps, sizeof(caps));
+ 	return S_OK;
++}
++
++static REFERENCE_TIME MediaInterval(const AM_MEDIA_TYPE *pmt)
++{
++	if (pmt->formattype == FORMAT_VideoInfo2)
++		return reinterpret_cast<const VIDEOINFOHEADER2 *>(pmt->pbFormat)->AvgTimePerFrame;
++	return reinterpret_cast<const VIDEOINFOHEADER *>(pmt->pbFormat)->AvgTimePerFrame;
++}
++
++static const BITMAPINFOHEADER *MediaBitmap(const AM_MEDIA_TYPE *pmt)
++{
++	if (!pmt || pmt->majortype != MEDIATYPE_Video || !pmt->pbFormat)
++		return nullptr;
++	if (pmt->formattype == FORMAT_VideoInfo) {
++		if (pmt->cbFormat < sizeof(VIDEOINFOHEADER))
++			return nullptr;
++	} else if (pmt->formattype == FORMAT_VideoInfo2) {
++		if (pmt->cbFormat < sizeof(VIDEOINFOHEADER2))
++			return nullptr;
++	} else {
++		return nullptr;
++	}
++	return GetBitmapInfoHeader(*pmt);
++}
++
++bool OutputPin::IsValidMediaType(const AM_MEDIA_TYPE *pmt) const
++{
++	const BITMAPINFOHEADER *bih = MediaBitmap(pmt);
++	if (!bih)
++		return false;
++	VideoFormat format;
++	if (!GetMediaTypeVFormat(*pmt, format) ||
++	    (format != VideoFormat::NV12 && format != VideoFormat::I420 && format != VideoFormat::YUY2))
++		return false;
++	return bih->biSize >= sizeof(BITMAPINFOHEADER) && bih->biPlanes == 1 &&
++	       bih->biBitCount == VFormatBits(format) &&
++	       (bih->biCompression == VFormatToFourCC(format) ||
++		(format == VideoFormat::I420 && bih->biCompression == MAKEFOURCC('I', 'Y', 'U', 'V'))) &&
++	       Dualcast::supported_size(bih->biWidth, bih->biHeight) &&
++	       Dualcast::supported_interval(MediaInterval(pmt));
+ }
+ 
+ STDMETHODIMP OutputPin::SetFormat(AM_MEDIA_TYPE *pmt)
+ {
+ 	PrintFunc(L"OutputPin::SetFormat");
+ 
+-	if (pmt == nullptr)
++	if (filter->state != State_Stopped)
++		return VFW_E_NOT_STOPPED;
++	if (connectedPin)
++		return VFW_E_ALREADY_CONNECTED;
++	if (!pmt && !mtList.empty())
++		pmt = mtList.front();
++	if (!IsValidMediaType(pmt)) {
++		const BITMAPINFOHEADER *bih = MediaBitmap(pmt);
++		Dualcast::trace("set-format-rejected", VFW_E_INVALIDMEDIATYPE,
++			bih ? bih->biWidth : 0, bih ? bih->biHeight : 0,
++			bih ? MediaInterval(pmt) : 0, bih ? bih->biCompression : 0);
+ 		return VFW_E_INVALIDMEDIATYPE;
++	}
+ 
+-	mt = pmt;
++	MediaType selected(*pmt);
++	GetMediaTypeVFormat(selected, curVFormat);
++	const BITMAPINFOHEADER *bih = GetBitmapInfoHeader(selected);
++	curCX = bih->biWidth;
++	curCY = bih->biHeight;
++	curInterval = MediaInterval(selected);
++	mt = selected;
++	Dualcast::trace("set-format", S_OK, curCX, curCY, curInterval, bih->biCompression);
+ 
+-	GetMediaTypeVFormat(mt, curVFormat);
+-
+-	VIDEOINFOHEADER *vih = reinterpret_cast<decltype(vih)>(mt->pbFormat);
+-	curCX = vih->bmiHeader.biWidth;
+-	curCY = vih->bmiHeader.biHeight;
+-	curInterval = vih->AvgTimePerFrame;
+-
+ 	return S_OK;
+ }
+ 
+@@ -427,18 +501,19 @@
+ 				      __uuidof(IMemAllocator),
+ 				      (void **)&allocator);
+ 
+-	if (FAILED(hr))
++	if (FAILED(hr)) {
++		Dualcast::trace("get-allocator-failed", hr);
+ 		return false;
++	}
+ 
+-	VIDEOINFOHEADER *vih = reinterpret_cast<decltype(vih)>(mt->pbFormat);
++	const BITMAPINFOHEADER *bih = GetBitmapInfoHeader(mt);
++	int cx = bih->biWidth;
++	int cy = bih->biHeight;
+ 
+-	int cx = vih->bmiHeader.biWidth;
+-	int cy = vih->bmiHeader.biHeight;
+-
+ 	WORD bits = VFormatBits(curVFormat);
+ 	bufSize = cx * cy * bits / 8;
+ 
+-	ALLOCATOR_PROPERTIES props;
++	ALLOCATOR_PROPERTIES props = {};
+ 
+ 	hr = memInput->GetAllocatorRequirements(&props);
+ 	if (hr == E_NOTIMPL) {
+@@ -450,23 +525,34 @@
+ 		return false;
+ 	}
+ 
+-	props.cbBuffer = (long)bufSize;
++	if (props.cBuffers <= 0)
++		props.cBuffers = 4;
++	if (props.cbAlign <= 0)
++		props.cbAlign = 1;
++	if (props.cbPrefix < 0)
++		props.cbPrefix = 0;
++	if (props.cbBuffer < (long)bufSize)
++		props.cbBuffer = (long)bufSize;
+ 
+-	ALLOCATOR_PROPERTIES actual;
++	ALLOCATOR_PROPERTIES actual = {};
+ 	hr = allocator->SetProperties(&props, &actual);
+-	if (FAILED(hr))
++	if (FAILED(hr) || actual.cbBuffer < props.cbBuffer) {
++		Dualcast::trace("allocator-properties-failed", FAILED(hr) ? hr : E_FAIL, cx, cy, curInterval);
+ 		return false;
++	}
+ 
+ 	if (!connecting && FAILED(allocator->Commit())) {
+ 		return false;
+ 	}
+ 
+-	memInput->NotifyAllocator(allocator, false);
+-	return true;
++	hr = memInput->NotifyAllocator(allocator, false);
++	if (FAILED(hr))
++		Dualcast::trace("notify-allocator-failed", hr);
++	return SUCCEEDED(hr);
+ }
+ 
+ static MediaType CreateMediaType(VideoFormat format, int cx, int cy,
+-				 long long interval)
++				 long long interval, bool extended = false)
+ {
+ 	MediaType mt;
+ 
+@@ -475,23 +561,37 @@
+ 	uint64_t rate =
+ 		(uint64_t)size * 10000000ULL / (uint64_t)interval * 8ULL;
+ 
+-	VIDEOINFOHEADER *vih = mt.AllocFormat<VIDEOINFOHEADER>();
+-	vih->bmiHeader.biSize = sizeof(vih->bmiHeader);
+-	vih->bmiHeader.biWidth = cx;
+-	vih->bmiHeader.biHeight = cy;
+-	vih->bmiHeader.biPlanes = VFormatPlanes(format);
+-	vih->bmiHeader.biBitCount = bits;
+-	vih->bmiHeader.biSizeImage = size;
+-	vih->bmiHeader.biCompression = VFormatToFourCC(format);
+-	vih->rcSource.right = cx;
+-	vih->rcSource.bottom = cy;
+-	vih->rcTarget = vih->rcSource;
+-	vih->dwBitRate = (DWORD)rate;
+-	vih->AvgTimePerFrame = interval;
++	BITMAPINFOHEADER *bih;
++	if (extended) {
++		VIDEOINFOHEADER2 *vih = mt.AllocFormat<VIDEOINFOHEADER2>();
++		vih->rcSource.right = cx;
++		vih->rcSource.bottom = cy;
++		vih->rcTarget = vih->rcSource;
++		vih->dwBitRate = (DWORD)rate;
++		vih->AvgTimePerFrame = interval;
++		vih->dwPictAspectRatioX = cx;
++		vih->dwPictAspectRatioY = cy;
++		bih = &vih->bmiHeader;
++	} else {
++		VIDEOINFOHEADER *vih = mt.AllocFormat<VIDEOINFOHEADER>();
++		vih->rcSource.right = cx;
++		vih->rcSource.bottom = cy;
++		vih->rcTarget = vih->rcSource;
++		vih->dwBitRate = (DWORD)rate;
++		vih->AvgTimePerFrame = interval;
++		bih = &vih->bmiHeader;
++	}
++	bih->biSize = sizeof(*bih);
++	bih->biWidth = cx;
++	bih->biHeight = cy;
++	bih->biPlanes = 1;
++	bih->biBitCount = bits;
++	bih->biSizeImage = size;
++	bih->biCompression = VFormatToFourCC(format);
+ 
+ 	mt->majortype = MEDIATYPE_Video;
+ 	mt->subtype = VFormatToSubType(format);
+-	mt->formattype = FORMAT_VideoInfo;
++	mt->formattype = extended ? FORMAT_VideoInfo2 : FORMAT_VideoInfo;
+ 	mt->bFixedSizeSamples = true;
+ 	mt->lSampleSize = size;
+ 
+@@ -503,6 +603,7 @@
+ {
+ 	MediaType newMT = CreateMediaType(format, cx, cy, interval);
+ 	mtList.push_back(newMT);
++	mtList.push_back(CreateMediaType(format, cx, cy, interval, true));
+ }
+ 
+ bool OutputPin::SetVideoFormat(VideoFormat format, int cx, int cy,
+@@ -538,8 +639,13 @@
+ 		return false;
+ 
+ 	hr = allocator->GetBuffer(&sample, nullptr, nullptr, 0);
+-	if (FAILED(hr))
++	if (FAILED(hr)) {
++		if (!loggedDeliveryFailure) {
++			Dualcast::trace("get-sample-buffer-failed", hr, curCX, curCY, curInterval);
++			loggedDeliveryFailure = true;
++		}
+ 		return false;
++	}
+ 
+ 	if (FAILED(sample->SetActualDataLength((long)bufSize)))
+ 		return false;
+@@ -593,7 +699,11 @@
+ 	sample->SetMediaTime(&startTime, &endTime);
+ 	sample->SetTime(&startTime, &endTime);
+ 
+-	memInput->Receive(sample);
++	HRESULT hr = memInput->Receive(sample);
++	if (FAILED(hr) && !loggedDeliveryFailure) {
++		Dualcast::trace("sample-delivery-failed", hr, curCX, curCY, curInterval);
++		loggedDeliveryFailure = true;
++	}
+ 
+ 	sample.Clear();
+ }
+@@ -761,7 +871,11 @@
+ 
+ 	OutputPin *pin = GetPin();
+ 	if (!!pin->allocator && state == State_Stopped) {
+-		pin->allocator->Commit();
++		HRESULT hr = pin->allocator->Commit();
++		if (FAILED(hr)) {
++			Dualcast::trace("allocator-commit-failed", hr);
++			return hr;
++		}
+ 	}
+ 
+ 	state = State_Paused;
+--- a/deps/libdshowcapture/src/source/output-filter.hpp
++++ b/deps/libdshowcapture/src/source/output-filter.hpp
+@@ -41,6 +41,7 @@
+ 	int curCX = 0;
+ 	int curCY = 0;
+ 	bool setSampleMediaType = false;
++	bool loggedDeliveryFailure = false;
+ 
+ 	ComPtr<IPin> connectedPin;
+ 	OutputFilter *filter;

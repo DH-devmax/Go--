@@ -1,0 +1,133 @@
+const { app, BrowserWindow, dialog, session, systemPreferences, ipcMain, desktopCapturer } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs/promises');
+const assert = require('node:assert/strict');
+const root = path.resolve(__dirname, '..');
+const out = path.join(root, 'output/playwright');
+app.setPath('userData', path.join(out, 'production-profile'));
+dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(out, 'native-window.mp4') });
+require('../src/main.cjs');
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function until(fn, label) {
+  for (let attempt = 0; attempt < 150; attempt++) { if (await fn()) return; await pause(100); }
+  throw new Error(`Timed out: ${label}`);
+}
+app.whenReady().then(async () => {
+  session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (_, callback) => callback({ cancel: true }));
+  await until(() => BrowserWindow.getAllWindows().some(win => win.getTitle().includes('双播台')), 'main window');
+  const main = BrowserWindow.getAllWindows().find(win => win.getTitle().includes('双播台'));
+  const js = code => main.webContents.executeJavaScript(code, true);
+  await until(async () => { try { return await js(`!!window.dualcast && !!document.getElementById('choose')`); } catch { return false; } }, 'main renderer');
+  await fs.mkdir(out, { recursive: true });
+  const results = [];
+  const permitted = process.platform !== 'darwin' || systemPreferences.getMediaAccessStatus('screen') === 'granted';
+  if (!permitted) {
+    results.push({ name: 'native capture', passed: null, reason: 'No screen-recording permission; no prompt requested.' });
+  } else {
+    const source = new BrowserWindow({ x: 20, y: 80, width: 800, height: 500, title: 'Dualcast local capture test', webPreferences: { backgroundThrottling: false } });
+    await source.loadFile(path.join(__dirname, 'viewer-fixture.html'));
+    await source.webContents.executeJavaScript(`document.title='Dualcast local capture test';document.body.style.background='#d82d3b';document.body.innerHTML='<h1>LOCAL CAPTURE TEST</h1>';setInterval(()=>{document.querySelector('h1').textContent='LOCAL '+Date.now()},100)`);
+    const sourceId = source.getMediaSourceId();
+    await js(`document.getElementById('choose').click()`);
+    await until(() => js(`Array.from(document.querySelectorAll('#sources button')).some(button=>button.textContent.includes('Dualcast local capture test'))`), 'test source list');
+    assert.equal(await js(`window.dualcast.sources().then(result=>result.sources.some(source=>source.id===${JSON.stringify(main.getMediaSourceId())}))`), false);
+    await js(`Array.from(document.querySelectorAll('#sources button')).find(button=>button.textContent.includes('Dualcast local capture test')).click()`);
+    await until(() => js(`document.getElementById('preview').videoWidth > 0 && !document.getElementById('record').disabled`), 'native capture');
+    results.push({ name: 'production IPC native window capture', passed: true });
+    const enumerateSources = desktopCapturer.getSources.bind(desktopCapturer);
+    let omittedSource = '';
+    let enumerationFailed = false;
+    desktopCapturer.getSources = async options => {
+      if (enumerationFailed) throw new Error('simulated enumeration failure');
+      return (await enumerateSources(options)).filter(item => item.id !== omittedSource);
+    };
+    enumerationFailed = true;
+    await js(`document.getElementById('record').click()`);
+    await until(() => js(`document.getElementById('notice').textContent.includes('暂时无法核对') && !document.getElementById('record').disabled`), 'transient source check');
+    assert.equal(await js(`document.getElementById('preview').srcObject.getVideoTracks()[0].readyState`), 'live');
+    assert.equal(await js(`document.getElementById('confirmation').open`), false);
+    enumerationFailed = false;
+    omittedSource = sourceId;
+    await js(`document.getElementById('record').click()`);
+    await until(() => js(`document.getElementById('capture-state').textContent.includes('来源不可用')`), 'invalid source state');
+    assert.equal(await js(`document.getElementById('preview').srcObject`), null);
+    assert.equal(await js(`document.getElementById('confirmation').open`), false);
+    assert.equal(await js(`document.getElementById('record').disabled`), true);
+    results.push({ name: 'missing live-track source is invalidated before audio or silent fallback; transient enumeration preserves capture', passed: true });
+    omittedSource = '';
+    async function reselect() {
+      await js(`document.getElementById('choose').click()`);
+      await until(() => js(`Array.from(document.querySelectorAll('#sources button')).some(button=>button.textContent.includes('Dualcast local capture test'))`), 'reselect list');
+      await js(`Array.from(document.querySelectorAll('#sources button')).find(button=>button.textContent.includes('Dualcast local capture test')).click()`);
+      await until(() => js(`document.getElementById('preview').videoWidth > 0 && !document.getElementById('record').disabled`), 'reselected source');
+    }
+    await reselect();
+    ipcMain.removeHandler('microphone');
+    ipcMain.handle('microphone', () => true);
+    await js(`window.audioRequests=0;navigator.mediaDevices.getUserMedia=async()=>{window.audioRequests++;throw new DOMException('Permission denied by system','NotAllowedError')};void 0`);
+    await js(`document.getElementById('record').click()`);
+    await until(() => js(`document.getElementById('confirmation').open`), 'audio denial choice');
+    assert.equal(await js(`window.audioRequests`), 1);
+    assert.equal(await js(`document.getElementById('confirm-title').textContent`), '音频不可用，是否无声继续？');
+    await js(`document.getElementById('cancel-confirm').click()`);
+    await until(() => js(`!document.getElementById('record').disabled`), 'audio cancellation unlock');
+    assert.equal(await js(`document.getElementById('output-state').textContent`), '未推流');
+    results.push({ name: 'automatic audio denial cancels without starting encoder', passed: true });
+    await js(`navigator.mediaDevices.getUserMedia=async()=>{window.audioRequests++;window.testAudioContext=new AudioContext();const oscillator=testAudioContext.createOscillator();oscillator.frequency.value=440;const dest=testAudioContext.createMediaStreamDestination();oscillator.connect(dest);oscillator.start();await testAudioContext.resume();return dest.stream};void 0`);
+    await js(`document.getElementById('record').click()`);
+    await until(() => js(`document.getElementById('output-state').textContent==='正在录制'`), 'native recording');
+    await js(`document.getElementById('tab-logs').click()`);
+    assert.equal(await js(`document.getElementById('preview').srcObject.getVideoTracks()[0].readyState`), 'live');
+    const loggingSnapshot = await js(`window.dualcast.logsSnapshot()`);
+    assert.equal(loggingSnapshot.state.output[0].state, 'running');
+    assert(loggingSnapshot.entries.some(entry => entry.module === 'record' && entry.action === 'running'));
+    await js(`document.getElementById('tab-stream').click()`);
+    await pause(500);
+    await js(`document.getElementById('record').click()`);
+    await until(() => js(`document.getElementById('output-state').textContent==='已停止'`), 'native stop');
+    results.push({ name: 'production IPC recording and stop', passed: true });
+    assert.equal(await js(`window.audioRequests`), 2);
+    assert.equal(await js(`document.getElementById('mixer-state').textContent`), '正在混音');
+    results.push({ name: 'one-click recording starts mixer automatically after permission recovery', passed: true });
+    await js(`document.getElementById('toggle-mixer').click();window.testAudioContext.close();navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('Permission denied by system','NotAllowedError')};void 0`);
+    await js(`document.getElementById('record').click()`);
+    await until(() => js(`document.getElementById('confirmation').open`), 'silent fallback choice');
+    await js(`document.getElementById('accept-confirm').click()`);
+    await until(() => js(`document.getElementById('output-state').textContent==='正在录制'`), 'explicit silent recording');
+    assert.equal(await js(`document.getElementById('mixer-state').textContent`), '未启动');
+    await js(`document.getElementById('record').click()`);
+    await until(() => js(`document.getElementById('output-state').textContent==='已停止'`), 'silent recording stop');
+    results.push({ name: 'audio denial allows recording only after explicit silent confirmation', passed: true });
+    await js(`navigator.mediaDevices.getUserMedia=async()=>{window.testAudioContext=new AudioContext();const osc=testAudioContext.createOscillator();const dest=testAudioContext.createMediaStreamDestination();osc.connect(dest);osc.start();await testAudioContext.resume();return dest.stream};void 0`);
+    assert.equal(await js(`document.getElementById('present') === null`), true);
+    assert.equal(await js(`typeof window.dualcast.openProjector`), 'undefined');
+    assert.equal(BrowserWindow.getAllWindows().length, 2, 'only main and original test source');
+    results.push({ name: 'shared-window UI and preload entry removed', passed: true });
+    await js(`document.getElementById('toggle-mixer').click()`);
+    await until(() => js(`document.getElementById('mixer-state').textContent === '正在混音'`), 'manual mixer');
+    const saveDialog = dialog.showSaveDialog;
+    dialog.showSaveDialog = async () => {
+      omittedSource = sourceId;
+      return { canceled: false, filePath: path.join(out, 'should-not-start.mp4') };
+    };
+    await js(`document.getElementById('record').click()`);
+    await until(() => js(`document.getElementById('capture-state').textContent.includes('来源不可用')`), 'late invalid source');
+    assert.equal(await js(`document.getElementById('confirmation').open`), false);
+    assert.equal(await js(`document.getElementById('mixer-state').textContent`), '未启动');
+    results.push({ name: 'source invalidation after save dialog clears preview and mixer', passed: true });
+    dialog.showSaveDialog = saveDialog;
+    omittedSource = '';
+    await reselect();
+    source.destroy();
+    await until(() => js(`document.getElementById('capture-state').textContent==='未选择画面'`), 'closed source cleanup');
+    assert.equal(await js(`document.getElementById('mixer-state').textContent`), '未启动');
+    assert.equal(await js(`window.dualcast.select({id:${JSON.stringify(sourceId)}}).then(()=>false,()=>true)`), true);
+    results.push({ name: 'vanished source cleanup and rejection', passed: true });
+  }
+  await fs.writeFile(path.join(out, 'main-smoke-results.json'), JSON.stringify(results, null, 2));
+  console.log(JSON.stringify(results, null, 2));
+  app.exit(0);
+}).catch(async error => {
+  console.error(error);
+  app.exit(1);
+});

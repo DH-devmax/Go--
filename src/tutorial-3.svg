@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#31506f" flood-opacity=".18"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="720" fill="#edf4fb"/>
+  <rect x="42" y="38" width="1196" height="644" rx="20" fill="#fff" filter="url(#shadow)"/>
+  <rect x="42" y="38" width="1196" height="62" rx="20" fill="#f7fafe"/>
+  <path d="M42 78h1196" stroke="#d8e5f2"/>
+  <circle cx="76" cy="69" r="8" fill="#ff6258"/>
+  <circle cx="101" cy="69" r="8" fill="#ffbd2e"/>
+  <circle cx="126" cy="69" r="8" fill="#28c840"/>
+  <rect x="180" y="57" width="540" height="25" rx="12" fill="#e8f0f8"/>
+  <text x="208" y="75" fill="#71849a" font-family="Segoe UI,Arial,sans-serif" font-size="14">双播台 · 百佳会议</text>
+  <rect x="88" y="136" width="1104" height="446" rx="16" fill="#f7fbff" stroke="#d6e3f0"/>
+  <rect x="88" y="136" width="1104" height="66" rx="16" fill="#fff"/>
+  <circle cx="128" cy="169" r="20" fill="#e2f0ff"/>
+  <rect x="118" y="158" width="20" height="21" rx="4" fill="#277fca"/>
+  <text x="171" y="176" fill="#214362" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="700">百佳会议</text>
+  <rect x="1028" y="151" width="126" height="36" rx="18" fill="#277fca"/>
+  <text x="1091" y="174" fill="#fff" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="14" font-weight="700">共享</text>
+  <rect x="126" y="238" width="690" height="280" rx="14" fill="#162230"/>
+  <rect x="154" y="266" width="634" height="224" rx="10" fill="#233c52"/>
+  <rect x="850" y="238" width="292" height="280" rx="14" fill="#fff" stroke="#c8d9e8" stroke-width="3"/>
+  <text x="882" y="280" fill="#1f3f5e" font-family="Segoe UI,Arial,sans-serif" font-size="19" font-weight="700">共享内容</text>
+  <rect x="878" y="306" width="236" height="52" rx="12" fill="#fff" stroke="#d4e2ee"/>
+  <text x="910" y="338" fill="#728ba0" font-family="Segoe UI,Arial,sans-serif" font-size="15">屏幕</text>
+  <rect x="878" y="372" width="236" height="58" rx="12" fill="#e8f4ff" stroke="#277fca" stroke-width="3"/>
+  <rect x="898" y="389" width="26" height="23" rx="4" fill="#277fca"/>
+  <text x="942" y="407" fill="#1d659c" font-family="Segoe UI,Arial,sans-serif" font-size="15" font-weight="700">窗口</text>
+  <rect x="878" y="444" width="236" height="52" rx="12" fill="#fff" stroke="#d4e2ee"/>
+  <text x="910" y="476" fill="#728ba0" font-family="Segoe UI,Arial,sans-serif" font-size="15">标签页</text>
+  <circle cx="1090" cy="541" r="32" fill="#277fca"/>
+  <text x="1090" y="552" fill="#fff" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="28" font-weight="700">3</text>
+  <text x="88" y="625" fill="#8aa0b4" font-family="Segoe UI,Arial,sans-serif" font-size="14">提示：优先选择“窗口”，这样共享内容不会带出双播台控制栏。</text>
+</svg>
