@@ -1,6 +1,6 @@
 # 0.4.4 验证记录
 
-开发机：macOS arm64，2026-10-16。Windows 安装器在此开发机交叉打包。
+开发机：macOS arm64，2026-10-16。本地完成交叉打包；GitHub Release 草稿中的安装器由 Windows Runner 构建。
 
 | 检查 | 结果 |
 | --- | --- |
@@ -13,12 +13,24 @@
 | `npm run test:camera` | 节目画布 → IPC → FFmpeg NV12 → 生产 Koffi 写入，隐藏主窗口继续送帧、启停与来源丢失通过；设备回读为测试替身，不代表 Windows 摄像头实际接收 |
 | `npm run test:logs` | 日志 Tab、筛选、TXT/JSON 导出、取消与失败、脱敏、清空及持久化通过 |
 | 带仓库配置的 NSIS 构建 | 离线测试构建生成 EXE、blockmap 与 latest.yml；核对实际安装包的版本、大小及 SHA512 均匹配。未上传或发布真实 Release |
+| 默认更新源 | 已绑定公开仓库 `DH-devmax/Go--`，本地重新运行 85 项测试、18 个界面布局及真实 electron-updater 下载和校验测试均通过 |
+| GitHub Windows 构建 | 工作流 `38800113788` 成功；Windows 上 85 项测试通过，0 失败、0 跳过，随后生成 NSIS 安装器与 Release 草稿 |
+| 远端附件核对 | 重新下载草稿的 EXE、blockmap、latest.yml、SHA256SUMS.txt；EXE 大小、SHA256 与 SHA512 均匹配，解包核对版本、默认仓库和应用源码通过 |
 
 `output` 下保留音频与视频样本、界面截图和结构化结果，已从分发包排除。部分测试故意触发权限、来源、HTTP、校验和导出错误，测试通过表示这些错误得到预期处理。
 
+## GitHub 构建记录
+
+- 源码提交：`a0a2732e97893118f9f418d6d2e9ca98b374d793`，标签 `v0.4.4`。
+- 工作流：https://github.com/DH-devmax/Go--/actions/runs/38800113788
+- Release ID：`414232469`，当前为草稿，正式客户端不会发现此版本。
+- Windows Runner 安装器：`Dualcast-Independent-Setup-0.4.4-x64.exe`，170360975 字节。
+- SHA256：`58c2acdf19af5a2b4dd1a863eed5070d91a15aa9d59d59406291a99df2aeb95b`。
+- 本地交叉构建与 Windows Runner 构建的安装器校验和不同，各自的元数据分别验证，不混用。
+
 ## 尚未实测
 
-- 已绑定公开仓库 `DH-devmax/Go--`；真实 Release 工作流结果另行记录，正式发布后的真实 GitHub 更新下载尚未验证。
+- 正式发布后的 GitHub 客户端更新发现和下载尚未验证；上面的远端附件下载使用发布者权限读取草稿，不等同于正式客户端更新。
 - Windows 首次安装、从旧 NSIS 安装版下载并重启升级、安装后版本变化与加密推流配置保留。
 - Windows 虚拟摄像头设备、物理或虚拟音频设备的真实接收，百佳会悬浮 SDK 窗静音及参会者收听。
 - 没有向真实 RTMP 直播平台推流，也未操作任何进行中的会议。

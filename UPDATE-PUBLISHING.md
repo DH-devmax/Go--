@@ -6,6 +6,8 @@
 
 源码和更新发布使用公开仓库 `DH-devmax/Go--`。`resources/update-config.json` 已设置默认来源，用户安装本版后无需手动配置。仓库中的源码提交和 Release 草稿不会触发客户端升级，只有正式发布才会提供更新。
 
+`v0.4.4` 已于 2026-10-16 在 Windows Runner 完成构建并生成草稿，85 项测试全部通过。远端附件校验记录见 `VERIFICATION-0.4.4.md`。本轮保留草稿，等待 Windows 安装升级和设备接收实测后发布。
+
 ## 一次性设置
 
 1. 创建公开 GitHub 仓库，将源码、`package-lock.json`、原生摄像头资源与其许可证上传。`node_modules`、`release`、`output` 和本机推流设置不能上传。原生摄像头源码、GPL 许可证及 OBS 对应源码归档都在项目中，应保留。
