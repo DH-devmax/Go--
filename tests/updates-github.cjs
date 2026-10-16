@@ -30,7 +30,7 @@ app.whenReady().then(async () => {
       version: currentVersion, supported: true, defaultRepository: 'DH-devmax/Go--',
       configFile: path.join(directory, 'updates.json'),
       createUpdater: feed => {
-        client = new NsisUpdater(feed, {
+        client = new NsisUpdater(null, {
           version: currentVersion, name: 'dualcast-independent', isPackaged: true,
           appUpdateConfigPath: path.join(directory, 'app-update.yml'),
           baseCachePath: path.join(directory, 'cache'), userDataPath: directory,
@@ -41,6 +41,7 @@ app.whenReady().then(async () => {
         });
         client._testOnlyOptions = { platform: 'win32' };
         client.httpExecutor = new ElectronHttpExecutor();
+        client.setFeedURL(feed);
         client.logger = { info() {}, warn() {}, error() {} };
         if (installDirectory) {
           client.installDirectory = installDirectory;
