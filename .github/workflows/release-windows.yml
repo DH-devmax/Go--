@@ -1,5 +1,6 @@
 name: Windows Release
 on:
+  workflow_dispatch:
   push:
     tags: ['v*']
 permissions:
@@ -17,6 +18,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Validate release tag
+        if: github.event_name == 'push'
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
@@ -28,6 +30,7 @@ jobs:
         run: npm run test:camera-install
       - run: npm run package:win:installer
       - name: Create reviewable release draft
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

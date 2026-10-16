@@ -43,8 +43,14 @@ app.whenReady().then(async () => {
     await js(`document.getElementById('camera-install').click()`);
     await until(() => js(`document.getElementById('confirmation').open`), `${attempt} confirmation`);
     await js(`document.getElementById('accept-confirm').click()`);
-    await until(() => js(`!document.getElementById('camera-install').disabled &&
-      document.getElementById('camera-install-label').textContent==='修复摄像头组件'`), `${attempt} completion`);
+    await until(async () => {
+      const report = await js(`window.dualcast.logsSnapshot()`);
+      if (report.state.cameraInstall?.state === 'failed') {
+        throw new Error(`Camera installation failed: ${JSON.stringify(report.state.cameraInstall)}`);
+      }
+      return js(`!document.getElementById('camera-install').disabled &&
+        document.getElementById('camera-install-label').textContent==='修复摄像头组件'`);
+    }, `${attempt} completion`);
     const report = await js(`window.dualcast.logsSnapshot()`);
     assert.equal(report.state.cameraInstall.state, 'installed', JSON.stringify(report.state.cameraInstall));
     assert.equal(report.state.cameraCheck.state, 'passed', JSON.stringify(report.state.cameraCheck));

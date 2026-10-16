@@ -158,7 +158,8 @@ async function installDriver(bundle, { repair = false } = {}) {
     commands.push(
       `$report.bits=${bits}; $report.stage='source-hash'`,
       `$source = ${literal(source)}`,
-      `if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne '${HASHES[bits]}') { throw 'Component hash mismatch' }`,
+      "$report.sourceHash=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash",
+      `if ($report.sourceHash -ne '${HASHES[bits]}') { throw 'Component hash mismatch' }`,
       `$target = Join-Path $dest '${name}'`,
       "$report.stage='copy'",
       `if (-not (Test-Path -LiteralPath $target) -or (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '${HASHES[bits]}') { Copy-Item -LiteralPath $source -Destination $target -Force }`,
@@ -184,7 +185,7 @@ async function installDriver(bundle, { repair = false } = {}) {
       '} finally { $base.Dispose() }');
   }
   commands.push("$report.state='completed'; $report.stage='verify'; $report.bits=0", writeReport, 'exit 0',
-    "} catch { $report.state='failed'; $report.hresult='0x'+$_.Exception.HResult.ToString('X8'); " + writeReport + '; exit 1 }');
+    "} catch { $report.state='failed'; $report.hresult='0x'+$_.Exception.HResult.ToString('X8'); $report.errorMessage=$_.Exception.Message; $report.errorType=$_.Exception.GetType().FullName; " + writeReport + '; exit 1 }');
   const powershell = systemFile('WindowsPowerShell\\v1.0\\powershell.exe');
   const payload = encoded(commands.join('\n'));
   // Do not embed an encoded command inside another encoded command (Windows' 32K limit).
@@ -216,6 +217,9 @@ async function installDriver(bundle, { repair = false } = {}) {
       bits: [32, 64].includes(report.bits) ? report.bits : 0,
       registrarExitCode: Number.isInteger(report.registrarExitCode) ? report.registrarExitCode : null,
       win32Code: Number.isInteger(report.win32Code) ? report.win32Code : null,
+      sourceHash: /^[a-f0-9]{64}$/i.test(report.sourceHash || '') ? report.sourceHash.toLowerCase() : null,
+      errorMessage: typeof report.errorMessage === 'string' ? report.errorMessage.slice(0, 512) : null,
+      errorType: /^[a-z0-9_.]{1,160}$/i.test(report.errorType || '') ? report.errorType : null,
       hresult: /^0x[0-9a-f]{8}$/i.test(report.hresult) ? report.hresult : null };
   } catch {
     lastInstall = { ...lastInstall, state: 'failed', stage: 'elevation', exitCode: executionError?.code ?? null };
