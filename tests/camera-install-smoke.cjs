@@ -54,7 +54,7 @@ app.whenReady().then(async () => {
     const report = await js(`window.dualcast.logsSnapshot()`);
     assert.equal(report.state.cameraInstall.state, 'installed', JSON.stringify(report.state.cameraInstall));
     assert.equal(report.state.cameraCheck.state, 'passed', JSON.stringify(report.state.cameraCheck));
-    assert.equal(report.state.cameraComponent.deviceName, CAMERA_NAME);
+    assert.equal((await js(`window.dualcast.cameraStatus()`)).deviceName, CAMERA_NAME);
     assert.equal(await js(`window.cameraInstallCaptureRequests`), 0);
   }
   const report = { passed: true, platform: process.platform, physicalCameras,
