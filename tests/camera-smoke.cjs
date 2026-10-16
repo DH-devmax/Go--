@@ -53,8 +53,11 @@ app.whenReady().then(async () => {
   let componentInstalled = true;
   let needsUpdate = false;
   let updates = 0;
-  ipcMain.handle('test-camera-status', () => ({ supported: true, installed: componentInstalled,
-    needsRename: componentInstalled && deviceName !== CAMERA_NAME, needsUpdate, deviceName, message: '测试：组件检测' }));
+  let pendingStatus;
+  let deferStatus = true;
+  ipcMain.handle('test-camera-status', () => deferStatus ? new Promise(resolve => { pendingStatus = resolve; })
+    : ({ supported: true, installed: componentInstalled,
+      needsRename: componentInstalled && deviceName !== CAMERA_NAME, needsUpdate, deviceName, message: '测试：组件检测' }));
   ipcMain.handle('test-camera-install', () => {
     updates++;
     deviceName = CAMERA_NAME;
@@ -67,6 +70,13 @@ app.whenReady().then(async () => {
   const js = text => win.webContents.executeJavaScript(text, true);
   await win.loadFile(path.join(root, 'dist/index.html'));
   await until(() => js(`document.getElementById('program-device').options.length===3`), 'renderer');
+  await js(`document.getElementById('tab-meeting').click()`);
+  assert.equal(await js(`document.getElementById('camera-install').disabled`), false, 'installation is available while registry inspection is pending');
+  await js(`document.getElementById('camera-install').click()`);
+  await until(() => js(`document.getElementById('confirmation').open`), 'pending detection install confirmation');
+  await js(`document.getElementById('cancel-confirm').click()`);
+  deferStatus = false;
+  pendingStatus({ supported: true, installed: true, deviceName, needsRename: true, message: '测试：组件检测' });
   componentInstalled = false;
   await js(`document.getElementById('tab-meeting').click();document.getElementById('camera-refresh').click()`);
   await until(() => js(`document.getElementById('camera-install-label').textContent==='安装独立摄像头'`), 'fresh installation available');
@@ -89,7 +99,12 @@ app.whenReady().then(async () => {
   await until(() => js(`document.getElementById('confirmation').open`), 'rename confirmation');
   assert(await js(`document.getElementById('confirm-copy').textContent.includes('两个设备')`));
   await js(`document.getElementById('accept-confirm').click()`);
-  await until(() => js(`document.getElementById('camera-device-name').textContent==='${CAMERA_NAME}' && document.getElementById('camera-install').disabled`), 'device renamed');
+  await until(() => js(`document.getElementById('camera-device-name').textContent==='${CAMERA_NAME}' && document.getElementById('camera-install-label').textContent==='修复摄像头组件'`), 'device renamed');
+  assert.equal(await js(`document.getElementById('camera-install').disabled`), false, 'registered components can still be repaired');
+  await js(`document.getElementById('camera-install').click()`);
+  await until(() => js(`document.getElementById('confirmation').open`), 'reinstall confirmation');
+  assert.equal(await js(`document.getElementById('confirm-title').textContent`), '修复摄像头组件');
+  await js(`document.getElementById('cancel-confirm').click()`);
   assert.equal(updates, 1);
   needsUpdate = true;
   await js(`document.getElementById('camera-refresh').click()`);
@@ -99,7 +114,7 @@ app.whenReady().then(async () => {
   await until(() => js(`document.getElementById('confirmation').open`), 'update confirmation');
   assert.equal(await js(`document.getElementById('confirm-title').textContent`), '更新摄像头组件');
   await js(`document.getElementById('accept-confirm').click()`);
-  await until(() => js(`document.getElementById('camera-install').disabled && !document.getElementById('camera-toggle').disabled`), 'component update completed');
+  await until(() => js(`document.getElementById('camera-install-label').textContent==='修复摄像头组件' && !document.getElementById('camera-toggle').disabled`), 'component update completed');
   assert.equal(updates, 2);
   await js(`document.getElementById('program-mode').value='none';document.getElementById('microphone-device').value='';document.getElementById('stream-output').value='';document.getElementById('virtual-output').value='';`);
   for (let attempt = 0; attempt < 2; attempt++) {

@@ -24,6 +24,8 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Use a stable release version" }
       - run: npm ci
       - run: npm test
+      - name: Verify camera installation without physical devices
+        run: npm run test:camera-install
       - run: npm run package:win:installer
       - name: Create reviewable release draft
         shell: pwsh

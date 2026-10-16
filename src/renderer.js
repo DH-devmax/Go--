@@ -101,7 +101,9 @@ let virtualConnected = false;
 let preparing = false;
 let engine = { state: 'idle', frames: 0 };
 let cameraState = { state: 'stopped', frames: 0 };
-let cameraDriver = { supported: false, installed: false, message: '正在检查虚拟摄像头组件…' };
+const supportsCameraInstall = window.dualcast.platform === 'win32' && window.dualcast.arch === 'x64';
+let cameraDriver = { supported: supportsCameraInstall, installed: false, message: '正在检查虚拟摄像头组件…' };
+let cameraDriverRound = 0;
 let cameraBusy = false;
 let cameraOwnsAudio = false;
 let cameraVerifying = false;
@@ -366,9 +368,11 @@ function render() {
   $('camera-toggle').innerHTML = cameraActive()
     ? '<i data-lucide="square"></i><span>停止虚拟摄像头</span>'
     : '<i data-lucide="video"></i><span>启动虚拟摄像头</span>';
-  $('camera-install').disabled = cameraBusy || cameraActive() || !cameraDriver.supported ||
-    (cameraDriver.installed && !cameraDriver.needsRename && !cameraDriver.needsUpdate);
-  $('camera-install-label').textContent = cameraDriver.needsUpdate ? '更新摄像头组件' : cameraDriver.needsRename ? '修复设备名称' : '安装独立摄像头';
+  $('camera-install').disabled = cameraBusy || cameraActive() || !cameraDriver.supported;
+  $('camera-install-label').textContent = cameraDriver.needsUpdate ? '更新摄像头组件' : cameraDriver.needsRename ? '修复设备名称'
+    : cameraDriver.installed ? '修复摄像头组件' : '安装独立摄像头';
+  $('camera-install').title = cameraBusy ? '正在处理摄像头操作，请稍候' : cameraActive() ? '先停止虚拟摄像头输出，再安装或修复'
+    : !cameraDriver.supported ? cameraDriver.message : '无需实体摄像头、画面来源或音频设备；Windows 将请求管理员确认';
   $('camera-device-name').textContent = cameraName();
   $('meeting-video-device').textContent = cameraName();
   $('camera-device-tip').textContent = `百佳会摄像头选择 ${cameraName()}，麦克风选择混音线路的录音端。安装后需退出并重新打开会议客户端；会议端需开启高清画质。`;
@@ -766,17 +770,21 @@ async function startAudioMixer() {
 }
 function stopOutput(error) { return output.stop({ error }); }
 async function refreshCameraDriver(check = false) {
+  const round = ++cameraDriverRound;
   if (!window.dualcast.cameraStatus) {
     cameraDriver = { supported: false, installed: false, message: '当前预览环境不提供 Windows 虚拟摄像头。' };
   } else {
     try {
-      cameraDriver = await window.dualcast.cameraStatus({ check });
+      const status = await window.dualcast.cameraStatus({ check });
+      if (round !== cameraDriverRound) return;
+      cameraDriver = status;
       if (check && cameraDriver.componentCheck) {
         notice(cameraDriver.componentCheck.message, cameraDriver.componentCheck.state === 'passed');
       }
     }
     catch (error) {
-      cameraDriver = { supported: window.dualcast.platform === 'win32', installed: false, message: error.message };
+      if (round !== cameraDriverRound) return;
+      cameraDriver = { supported: supportsCameraInstall, installed: false, message: error.message };
       diagnostic('camera', 'error', 'detect', error.message);
     }
   }
@@ -821,10 +829,12 @@ async function toggleCamera() {
 }
 async function installCamera() {
   if (cameraBusy || cameraActive()) return;
-  const title = cameraDriver.needsUpdate ? '更新摄像头组件' : cameraDriver.needsRename ? '修复设备名称' : '安装独立摄像头';
+  const title = cameraDriver.needsUpdate ? '更新摄像头组件' : cameraDriver.needsRename ? '修复设备名称'
+    : cameraDriver.installed ? '修复摄像头组件' : '安装独立摄像头';
   if (!await confirmAction(title,
     `安装或更新基于 OBS 开源组件构建的“${CAMERA_NAME}”独立摄像头，不需要实体摄像头或运行 OBS。它与 OBS Virtual Camera 是两个设备；原 OBS 设备继续保留。Windows 将请求管理员确认，完成后必须完全退出并重新打开会议客户端，以加载新组件。确认继续？`)) return;
   cameraBusy = true;
+  cameraDriverRound++;
   render();
   try {
     cameraDriver = await window.dualcast.cameraInstall();

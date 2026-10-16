@@ -9,6 +9,7 @@ window.addEventListener('unhandledrejection', event => {
 });
 contextBridge.exposeInMainWorld('dualcast', {
   platform: process.platform,
+  arch: process.arch,
   updateStatus: () => ipcRenderer.invoke('update-status'),
   updateConfigure: config => ipcRenderer.invoke('update-configure', config),
   updateCheck: () => ipcRenderer.invoke('update-check'),

@@ -1,4 +1,6 @@
 require('./crop-fixture.js');
+window.dualcast.platform = 'win32';
+window.dualcast.arch = 'x64';
 const { ipcRenderer } = require('electron');
 window.dualcast.cameraStatus = () => ipcRenderer.invoke('test-camera-status');
 window.dualcast.cameraInstall = () => ipcRenderer.invoke('test-camera-install');

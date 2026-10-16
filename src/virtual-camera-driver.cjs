@@ -130,10 +130,10 @@ function installFailure(report) {
     `${report.registrarExitCode != null ? `，注册程序退出码 ${report.registrarExitCode}` : ''}` +
     `${report.hresult ? `，错误码 ${report.hresult}` : ''}。无需连接实体摄像头；请导出错误日志检查权限、系统组件或文件占用。`;
 }
-async function installDriver(bundle) {
+async function installDriver(bundle, { repair = false } = {}) {
   const before = await driverStatus();
   if (!before.supported) throw new Error(before.message);
-  if (before.installed && !before.needsRename && !before.needsUpdate) return before;
+  if (!repair && before.installed && !before.needsRename && !before.needsUpdate) return before;
   lastInstall = { time: new Date().toISOString(), state: 'running', stage: 'prepare', componentVersion: COMPONENT_VERSION };
   lastCheck = null;
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dualcast-camera-install-'));
@@ -144,7 +144,7 @@ async function installDriver(bundle) {
     `$dest = Join-Path $env:ProgramFiles 'Dualcast Virtual Camera\\${COMPONENT_VERSION}'`,
     'New-Item -ItemType Directory -Path $dest -Force | Out-Null'];
   for (const bits of [32, 64]) {
-    if (before[bits === 32 ? 'x86Current' : 'x64Current']) continue;
+    if (!repair && before[bits === 32 ? 'x86Current' : 'x64Current']) continue;
     const name = `dualcast-camera${bits}.dll`;
     const source = path.join(bundle, name);
     try {
@@ -161,7 +161,7 @@ async function installDriver(bundle) {
       `if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -ne '${HASHES[bits]}') { throw 'Component hash mismatch' }`,
       `$target = Join-Path $dest '${name}'`,
       "$report.stage='copy'",
-      'Copy-Item -LiteralPath $source -Destination $target -Force',
+      `if (-not (Test-Path -LiteralPath $target) -or (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '${HASHES[bits]}') { Copy-Item -LiteralPath $source -Destination $target -Force }`,
       "$report.stage='target-hash'",
       `if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '${HASHES[bits]}') { throw 'Installed component hash mismatch' }`,
       `$registrar = Join-Path $env:SystemRoot '${bits === 32 ? 'SysWOW64' : 'System32'}\\regsvr32.exe'`,

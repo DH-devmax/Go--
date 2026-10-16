@@ -300,7 +300,7 @@ else {
       try {
         // Finish probes before replacing a DLL they may still have loaded.
         await cameraComponentCheck;
-        cameraComponent = await installDriver(cameraBundle());
+        cameraComponent = await installDriver(cameraBundle(), { repair: true });
         if (cameraComponent.componentCheck) logComponentCheck(cameraComponent.componentCheck);
         return cameraComponent;
       } finally { installingCamera = false; }

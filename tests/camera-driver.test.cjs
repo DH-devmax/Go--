@@ -247,3 +247,18 @@ test('registration success is separate from activation and a failed component ch
   driver.failedCheck = null;
   assert.equal((await driver.checkDriver('bundle')).state, 'passed');
 });
+
+test('explicit repair re-registers both current components even when registration hashes look healthy', async () => {
+  const driver = driverFixture({ 32: CAMERA_NAME, 64: CAMERA_NAME });
+  driver.failedCheck = 32;
+  assert.equal((await driver.checkDriver('bundle')).state, 'failed');
+  assert.equal((await driver.driverStatus()).installed, true);
+  driver.failedCheck = null;
+  const result = await driver.installDriver(path.resolve(__dirname, '../resources/virtual-camera'), { repair: true });
+  assert.equal(result.componentCheck.state, 'passed');
+  assert.equal(driver.elevated.length, 1);
+  assert.match(driver.elevated[0], /dualcast-camera32\.dll/);
+  assert.match(driver.elevated[0], /dualcast-camera64\.dll/);
+  assert.equal(driver.elevated[0].split("$report.stage='register'").length - 1, 2);
+  assert.match(driver.elevated[0], /Test-Path -LiteralPath \$target/, 'identical installed DLLs are not overwritten while clients may have them loaded');
+});
