@@ -56,7 +56,9 @@ function driverFixture(names = { 32: 'OBS Virtual Camera', 64: 'OBS Virtual Came
     assert(script.includes(CAMERA_CLSID), 'query the independent device, not an installed OBS device');
     assert(!script.includes('{A3FCE0F5-3493-419F-958A-ABA1250EC20B}'));
     if (fixture.names[bits] == null) throw Object.assign(new Error('Missing registration'), { code: 2 });
-    assert.match(script, /Get-FileHash -LiteralPath \$file/, 'check the registered file, not just the bundled file');
+    assert.match(script, /\$hash=Get-ComponentHash \$file/, 'check the registered file, not just the bundled file');
+    assert.match(script, /Security\.Cryptography\.SHA256/, 'hashing must work when PowerShell utility modules are unavailable');
+    assert.doesNotMatch(script, /Get-FileHash/);
     return { stdout: Buffer.from(JSON.stringify({ name: fixture.names[bits], hash: fixture.hashes[bits] }), 'utf8').toString('base64'), stderr: '' };
   };
   const module = { exports: {} };
@@ -107,7 +109,7 @@ test('a missing component installs only its architecture before naming both view
   const script = driver.elevated[0];
   assert.match(script, /dualcast-camera32\.dll/);
   assert.doesNotMatch(script, /dualcast-camera64\.dll/);
-  assert.match(script, /Get-FileHash/);
+  assert.match(script, /Get-ComponentHash/);
   assert.match(script, /Registry64/);
 });
 
@@ -260,5 +262,6 @@ test('explicit repair re-registers both current components even when registratio
   assert.match(driver.elevated[0], /dualcast-camera32\.dll/);
   assert.match(driver.elevated[0], /dualcast-camera64\.dll/);
   assert.equal(driver.elevated[0].split("$report.stage='register'").length - 1, 2);
-  assert.match(driver.elevated[0], /Test-Path -LiteralPath \$target/, 'identical installed DLLs are not overwritten while clients may have them loaded');
+  assert.match(driver.elevated[0], /IO\.File\]::Exists\(\$target\)/, 'identical installed DLLs are not overwritten while clients may have them loaded');
+  assert.doesNotMatch(driver.elevated[0], /Get-FileHash/);
 });

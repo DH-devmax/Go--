@@ -15,6 +15,12 @@ const HASHES = {
 };
 const literal = text => `'${text.replaceAll("'", "''")}'`;
 const encoded = text => Buffer.from(text, 'utf16le').toString('base64');
+const hashScript = `function Get-ComponentHash([string]$file) {
+  $stream=[IO.File]::OpenRead($file)
+  $sha=[Security.Cryptography.SHA256]::Create()
+  try { return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','').ToLowerInvariant() }
+  finally { $sha.Dispose(); $stream.Dispose() }
+}`;
 let lastInstall = null;
 let lastCheck = null;
 function driverDiagnostics() { return { lastInstall, lastCheck }; }
@@ -50,7 +56,7 @@ async function clearDriverLog() {
 async function registered(bits) {
   try {
     // Encode the result as ASCII so localized PowerShell output cannot corrupt the device name.
-    const script = `$ErrorActionPreference='Stop'; try {
+    const script = `$ErrorActionPreference='Stop'; ${hashScript}; try {
       $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry${bits})
       try {
         $key=$base.OpenSubKey('SOFTWARE\\Classes\\CLSID\\${CLSID}\\InprocServer32')
@@ -63,7 +69,7 @@ async function registered(bits) {
           if ([string]$device.GetValue('CLSID') -ne '${CLSID}') { exit 5 }
           $name=[string]$device.GetValue('FriendlyName')
         } finally { $device.Dispose() }
-        $hash=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+        $hash=Get-ComponentHash $file
         $json=@{name=$name;hash=$hash} | ConvertTo-Json -Compress
         [Console]::Out.Write([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json)))
       } finally { $base.Dispose() }
@@ -139,7 +145,7 @@ async function installDriver(bundle, { repair = false } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dualcast-camera-install-'));
   const resultFile = path.join(directory, 'result.json');
   const writeReport = `$report | ConvertTo-Json -Compress | ForEach-Object { [IO.File]::WriteAllText(${literal(resultFile)},$_,[Text.Encoding]::UTF8) }`;
-  const commands = ["$ErrorActionPreference = 'Stop'",
+  const commands = ["$ErrorActionPreference = 'Stop'", hashScript,
     "$report=@{state='running';stage='prepare';bits=0;registrarExitCode=$null}", 'try {',
     `$dest = Join-Path $env:ProgramFiles 'Dualcast Virtual Camera\\${COMPONENT_VERSION}'`,
     'New-Item -ItemType Directory -Path $dest -Force | Out-Null'];
@@ -158,13 +164,13 @@ async function installDriver(bundle, { repair = false } = {}) {
     commands.push(
       `$report.bits=${bits}; $report.stage='source-hash'`,
       `$source = ${literal(source)}`,
-      "$report.sourceHash=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash",
+      "$report.sourceHash=Get-ComponentHash $source",
       `if ($report.sourceHash -ne '${HASHES[bits]}') { throw 'Component hash mismatch' }`,
       `$target = Join-Path $dest '${name}'`,
       "$report.stage='copy'",
-      `if (-not (Test-Path -LiteralPath $target) -or (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '${HASHES[bits]}') { Copy-Item -LiteralPath $source -Destination $target -Force }`,
+      `if (-not [IO.File]::Exists($target) -or (Get-ComponentHash $target) -ne '${HASHES[bits]}') { Copy-Item -LiteralPath $source -Destination $target -Force }`,
       "$report.stage='target-hash'",
-      `if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne '${HASHES[bits]}') { throw 'Installed component hash mismatch' }`,
+      `if ((Get-ComponentHash $target) -ne '${HASHES[bits]}') { throw 'Installed component hash mismatch' }`,
       `$registrar = Join-Path $env:SystemRoot '${bits === 32 ? 'SysWOW64' : 'System32'}\\regsvr32.exe'`,
       "$report.stage='register'",
       '$registration = Start-Process -FilePath $registrar -ArgumentList \'/s\',(\'"\' + $target + \'"\') -Wait -PassThru',
