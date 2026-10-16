@@ -2,7 +2,8 @@ name: Verify Installed Windows Update
 on:
   workflow_dispatch:
 permissions:
-  contents: read
+  # The original 0.4.4 installer is retained as an unpublished draft.
+  contents: write
 jobs:
   installed-update:
     runs-on: windows-latest
