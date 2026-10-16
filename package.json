@@ -1,7 +1,7 @@
 {
   "name": "dualcast-independent",
   "productName": "Dualcast Independent",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "private": true,
   "description": "Independent screen capture and RTMP broadcaster",
   "main": "src/main.cjs",

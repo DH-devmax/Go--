@@ -1,0 +1,40 @@
+name: Verify Installed Windows Update
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  installed-update:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install the original 0.4.4 baseline
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.4.4 --pattern '*.exe' --dir output/baseline --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Unable to download the baseline installer" }
+          $installer = (Get-ChildItem output/baseline/*.exe).FullName
+          $directory = Join-Path $env:LOCALAPPDATA "Programs\DualcastUpgradeTest"
+          $process = Start-Process -FilePath $installer -ArgumentList '/S',("/D=" + $directory) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Baseline installation failed: $($process.ExitCode)" }
+          $exe = Join-Path $directory "Dualcast Independent.exe"
+          if ([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion -ne "0.4.4") { throw "Wrong installed baseline version" }
+          Get-Process | Where-Object { $_.Path -eq $exe } | Stop-Process -Force
+          "DUALCAST_TEST_INSTALL_DIRECTORY=$directory" >> $env:GITHUB_ENV
+          Copy-Item (Join-Path $directory 'resources\app.asar') output/baseline/app.asar
+          "DUALCAST_UPDATE_BASELINE_ASAR=$((Resolve-Path output/baseline/app.asar).Path)" >> $env:GITHUB_ENV
+      - name: Discover, download and install the public update with the old updater
+        run: npm run test:updates:github
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installed-update-result
+          path: output/github-live-update-results.json
